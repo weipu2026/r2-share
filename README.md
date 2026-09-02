@@ -214,6 +214,20 @@ NODE_PATH="<playwright-core 所在 node_modules 目录>" node e2e-prod.mjs
 
 脚本内 `BASE` / `PASS` 按生产环境修改；依赖外部 playwright-core（不在本项目 package.json）。
 
+### 同步源码到 GitHub
+
+```bash
+export GH_TOKEN="ghp_xxx"     # PAT，需 repo scope
+npm run push:gh               # 同步全部已跟踪文件
+npm run push:gh -- src/index.ts public/app.js   # 只同步指定文件
+```
+
+> 为什么不是 `git push`：本仓库的开发环境代理只放行 `api.github.com`、拦截 `github.com`，
+> git 协议必然超时。脚本改走 **GitHub Contents API** 逐文件 PUT，效果等价。
+> 在正常网络下直接 `git push` 即可，无需用这个脚本。
+>
+> 脚本只同步 **git 已跟踪**的文件，因此 `.dev.vars` / `.deploy.local.json` 天然不会上传。
+
 本地没有 R2 的 S3 凭证时，程序会自动进入**回退模式**：上传下载改走 Worker 代理
 （`/api/local-put`、`/api/local-get`、`/api/local-index`）。一旦配上凭证，这些路由自动拒绝服务。
 
