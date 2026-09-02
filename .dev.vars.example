@@ -1,0 +1,11 @@
+# 复制为 .dev.vars 后按需修改
+# 注意：.dev.vars 已在 .gitignore 中，不会被提交
+
+ADMIN_PASSWORD=change-me
+SESSION_SECRET=random-long-string-please-change
+
+# 以下三项留空 → 本地回退模式（上传下载走 Worker 代理，可离线开发）
+# 填写后 → 自动切换为 presigned 直传 + R2 公开桶直链（需要真实 R2 资源）
+# R2_ACCESS_KEY_ID=
+# R2_SECRET_ACCESS_KEY=
+# R2_ACCOUNT_ID=
