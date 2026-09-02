@@ -1,0 +1,61 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "r2share"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# 静态资源（style.css / app.js）
+# 注意：静态资源请求由 CF 边缘直接服务，免费且无上限，不消耗 Workers 请求数。
+# run_worker_first 只对 /api/* 生效：API 先执行 Worker；其余请求（首页 / 与静态资源）
+# 不执行 Worker → 页面加载的 Workers 消耗从「1 HTML + 1 css + 1 js = 3 次」降到 1 次，
+# 10 万请求/天的免费额度只被首页 HTML 占用。
+# binding 是必需的：有了它才能在 Worker 里用 env.ASSETS 做兜底转发
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# 自定义域：Worker 站点入口
+# 用 custom_domain = true（而非 zone_name）：Cloudflare 自动创建 DNS 记录与证书，
+# 所有路径直达 Worker（Worker 即源站），无需手动添加 A/CNAME 记录。
+# 之前用 zone_name 传统 route 时，assets 模式会把它当 assets 路径匹配（部署警告
+# "Will match assets: public\file.114448.xyz"），且手动加的 A 记录导致 522 回源超时。
+[[routes]]
+pattern = "file.114448.xyz"
+custom_domain = true
+
+# R2 公开桶：存文件与 files.json 索引
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "r2share"
+
+# KV：存 admin 口令失败计数（限流用）
+#
+# ⚠️ 这里是占位符，不要直接填真实 id——KV namespace id 属于账户资源标识，
+# 会随仓库公开。真实值请放进本地私有配置 .deploy.local.json（已被 .gitignore 排除）：
+#   cp .deploy.local.example.json .deploy.local.json
+#   npx wrangler kv namespace create r2share_kv   # 把返回的 id 填进 kvId
+#
+# npm run dev / npm run deploy 会由 scripts/with-config.mjs 在运行时把占位符替换成
+# 真实值（临时生成 .wrangler.local.toml，用完即删），所以直接 `wrangler deploy` 会失败。
+[[kv_namespaces]]
+binding = "KV"
+id = "r2share_kv_placeholder"
+
+[vars]
+# R2 桶名（presigned 签名需要用到）
+BUCKET_NAME = "r2share"
+# 下载直链域名（R2 公开桶绑定的自定义域）
+DL_DOMAIN = "https://dl.114448.xyz"
+# 站点名称
+SITE_NAME = "我的仓库"
+# 登录态有效期（天）
+SESSION_DAYS = "30"
+# 单文件上传上限（字节），0 表示沿用 Workers 请求体上限
+MAX_UPLOAD = "104857600"
+
+# 以下敏感值放在 .dev.vars（本地）或 wrangler secret（生产）：
+#   ADMIN_PASSWORD       管理口令
+#   SESSION_SECRET       HMAC 签名密钥
+#   R2_ACCESS_KEY_ID     R2 S3 API 密钥（用于 presigned 直传签名）
+#   R2_SECRET_ACCESS_KEY
+#   R2_ACCOUNT_ID
