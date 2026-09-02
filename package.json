@@ -1,0 +1,24 @@
+{
+  "name": "r2share",
+  "version": "1.0.0",
+  "private": true,
+  "description": "零费用的 R2 我的仓库：Cloudflare Worker + R2 公开桶直链",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/with-config.mjs dev",
+    "deploy": "npm run check && node scripts/with-config.mjs deploy",
+    "check": "node scripts/check-deploy.mjs",
+    "seed": "node scripts/seed.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test-crypto": "node scripts/test-crypto.mjs",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260901.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.127.1"
+  }
+}
