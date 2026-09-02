@@ -1,0 +1,5 @@
+{
+  "_readme": "复制为 .deploy.local.json 并填入真实值。该文件已被 .gitignore 排除，不会进仓库；仓库里只留占位符。KV namespace id 属于账户资源标识，不要在 wrangler.toml 里写真实值。",
+  "_如何获取": "npx wrangler kv namespace create r2share_kv —— 把命令返回的 32 位十六进制 id 填到下面的 kvId",
+  "kvId": "在这里填 KV namespace id（32 位十六进制）"
+}
