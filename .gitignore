@@ -1,0 +1,16 @@
+node_modules/
+.wrangler/
+.dev.vars
+# 本地私有部署配置（真实 KV namespace id，仓库里只留 .deploy.local.example.json）
+.deploy.local.json
+# scripts/with-config.mjs 运行时生成的临时配置（含真实值，用完即删）
+.wrangler.local.toml
+*.log
+.DS_Store
+.secrets*.tmp
+.shots/
+# 本地回归工具（依赖外部 playwright-core，不随仓库分发）
+e2e-prod.mjs
+.e2e-*.png
+# 本地 UI 调试截图
+.ui-*.png
