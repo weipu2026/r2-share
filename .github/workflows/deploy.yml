@@ -26,6 +26,11 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    # push-gh.sh 逐文件 PUT 会产生多个 commit，从而触发多个 run；
+    # concurrency 让同组新 run 自动取消进行中的旧 run，只保留最后一个，避免刷爆 Actions 额度
+    concurrency:
+      group: deploy-r2share
+      cancel-in-progress: true
 
     steps:
       - name: Checkout
@@ -34,7 +39,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
