@@ -52,6 +52,11 @@ SITE_NAME = "我的仓库"
 SESSION_DAYS = "30"
 # 单文件上传上限（字节），0 表示沿用 Workers 请求体上限
 MAX_UPLOAD = "104857600"
+# 生产环境上传改走 Worker 代理：'1' 开启。
+# 背景：presigned 直传目标 r2.cloudflarestorage.com 在某些网络被墙（ERR_ADDRESS_UNREACHABLE），
+# 开启后浏览器的上传 PUT 指向本 Worker 的 /api/local-put（同源，无需 CORS），
+# 由 Worker 内部 env.BUCKET.put() 写 R2，绕开被墙端点；下载仍走 DL_DOMAIN 公开桶直链。
+UPLOAD_VIA_WORKER = "1"
 
 # 以下敏感值放在 .dev.vars（本地）或 wrangler secret（生产）：
 #   ADMIN_PASSWORD       管理口令
