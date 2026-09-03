@@ -35,6 +35,8 @@ export interface Env {
   SESSION_DAYS: string;
   MAX_UPLOAD: string;
   BUCKET_NAME: string;
+  /** '1' 时生产环境上传改走 Worker 代理（绕开被墙的 r2.cloudflarestorage.com 直传） */
+  UPLOAD_VIA_WORKER: string;
   ADMIN_PASSWORD: string;
   SESSION_SECRET: string;
   R2_ACCESS_KEY_ID: string;
@@ -77,9 +79,21 @@ function clientIP(c: any): string {
 /**
  * 是否为本地开发模式：没有配置 R2 的 S3 凭证时，
  * presigned 直传与公开桶直链都不可用，自动回退到 Worker 代理。
+ * 该标记同时传给前端（CFG.local），控制下载/索引走本地代理路由。
  */
 function isLocal(c: any): boolean {
   return !c.env.R2_ACCESS_KEY_ID || !c.env.R2_ACCOUNT_ID;
+}
+
+/**
+ * 上传是否走 Worker 代理：
+ * - 本地开发（unconfigured R2）或
+ * - 生产显式设置 UPLOAD_VIA_WORKER='1'
+ * 区别于 isLocal：此标记只决定「上传」走 Worker 中转（env.BUCKET.put），
+ * 下载仍走公开桶直链，避免 r2.cloudflarestorage.com 被墙时上传不可用。
+ */
+function isUploadProxy(c: any): boolean {
+  return isLocal(c) || c.env.UPLOAD_VIA_WORKER === '1';
 }
 
 app.get('/', async (c) => {
@@ -95,8 +109,9 @@ app.get('/', async (c) => {
 });
 
 /* ---------------- 本地开发回退路由 ----------------
- * 仅当未配置 R2 S3 凭证时可用，用于 wrangler dev 本地验证。
- * 生产环境一旦配上凭证，这几条路由会直接拒绝。
+ * /api/local-index 与 /api/local-get 仅当未配置 R2 S3 凭证时可用（wrangler dev 本地验证）；
+ * /api/local-put 例外：生产开启 UPLOAD_VIA_WORKER=1 时作为上传主路径（见 isUploadProxy）。
+ * 生产环境的下载与索引始终走 R2 公开桶直链（DL_DOMAIN），不经过这里。
  */
 
 app.get('/api/local-index', async (c) => {
@@ -131,21 +146,31 @@ app.get('/api/local-get', async (c) => {
 });
 
 app.put('/api/local-put', async (c) => {
-  if (!isLocal(c)) return c.text('生产环境请使用 presigned 直传', 400);
+  if (!isUploadProxy(c)) {
+    return c.text('上传代理未启用，请配置 UPLOAD_VIA_WORKER=1 或使用 presigned 直传', 400);
+  }
   if (!(await isLogin(c))) return c.json({ error: '未登录' }, 401);
   const key = sanitizePath(c.req.query('key'));
   if (!key) return c.text('缺少 key', 400);
 
-  // 读成 ArrayBuffer 再写：流式 put 在 miniflare 下会落盘为 0 字节
-  // 生产环境走 presigned 直传，不经过这里，因此不影响大文件场景
-  const body = await c.req.arrayBuffer();
-  await c.env.BUCKET.put(key, body, {
-    httpMetadata: {
-      contentType:
-        c.req.header('content-type') || 'application/octet-stream',
-    },
+  const ctype = c.req.header('content-type') || 'application/octet-stream';
+
+  if (isLocal(c)) {
+    // 本地 miniflare：流式 put 会落盘为 0 字节，只能读进内存再写
+    const body = await c.req.arrayBuffer();
+    await c.env.BUCKET.put(key, body, { httpMetadata: { contentType: ctype } });
+    return c.json({ ok: true, key, size: body.byteLength });
+  }
+
+  // 生产代理模式：流式透传 request body 到 R2，不占 Worker 内存
+  // （限制同 Workers 请求体上限，与 MAX_UPLOAD 对齐）
+  // 注意用 c.req.raw.body（原生 Request.body）而非 c.req.body，Hono 的类型不接受后者
+  const body = c.req.raw.body;
+  if (!body) return c.text('缺少请求体', 400);
+  const obj = await c.env.BUCKET.put(key, body, {
+    httpMetadata: { contentType: ctype },
   });
-  return c.json({ ok: true, key, size: body.byteLength });
+  return c.json({ ok: true, key, size: obj.size });
 });
 
 /* ---------------- 鉴权 ---------------- */
@@ -216,8 +241,10 @@ app.post('/api/sign', async (c) => {
     return c.json({ error: '文件超过大小上限' }, 413);
   }
 
-  // 本地开发：回退到 Worker 代理上传
-  if (isLocal(c)) {
+  // 上传走 Worker 代理：本地开发或生产开启 UPLOAD_VIA_WORKER=1。
+  // 生产场景为避免 r2.cloudflarestorage.com 被墙（ERR_ADDRESS_UNREACHABLE），
+  // 上传目标改为本 Worker 的同源 /api/local-put（浏览器无需 CORS、不依赖被墙端点）。
+  if (isUploadProxy(c)) {
     return c.json({
       ok: true,
       url: `/api/local-put?key=${encodeURIComponent(path)}`,
