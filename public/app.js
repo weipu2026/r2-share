@@ -44,7 +44,10 @@ function fmtSize(b) {
 }
 
 function fmtTime(ms) {
-  const d = new Date(ms);
+  const n = Number(ms);
+  // 时间戳缺失/非法时回退为占位符，避免渲染出 "NaN-NaN-NaN NaN:NaN"
+  if (!Number.isFinite(n) || n <= 0) return '-';
+  const d = new Date(n);
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
@@ -211,11 +214,16 @@ function renderCrumb() {
 /** 本地开发（未配 R2 凭证）时改走 Worker 代理，生产环境直连公开桶 */
 function dlUrl(path) {
   if (CFG.local) return '/api/local-get?key=' + encodeURIComponent(path);
+  // 生产但未配置下载域：直链不可用，返回 #（点击无操作），
+  // 避免拼出 "undefined/xxx" 的坏链接误导用户以为下载坏了
+  if (!CFG.dlDomain) return '#';
   return CFG.dlDomain + '/' + path.split('/').map(encodeURIComponent).join('/');
 }
 
 function idxUrl() {
-  return CFG.local ? '/api/local-index' : CFG.dlDomain + '/files.json';
+  if (CFG.local) return '/api/local-index';
+  // 未配置下载域时索引也无法获取；返回空让 loadIndex 走容灾分支
+  return CFG.dlDomain ? CFG.dlDomain + '/files.json' : '';
 }
 
 /* ---------------- 预览 ----------------
@@ -622,11 +630,13 @@ async function loadIndex() {
 
 /* ---------------- 上传 ---------------- */
 
-function putFile(url, file, onProgress) {
+function putFile(url, file, onProgress, ctype) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url, true);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    // ctype 由 uploadFiles 传入（已在签名时小写化），与 SigV4 签名契约保持一致；
+    // 独立调用时取 file.type 的小写，避免大小写不匹配导致 R2 403。
+    xhr.setRequestHeader('Content-Type', ctype || (file.type || 'application/octet-stream').toLowerCase());
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(e.loaded / e.total);
     };
@@ -654,11 +664,15 @@ async function uploadFiles(fileList) {
     const bar = row.querySelector('.up-bar i');
     const st = row.querySelector('.up-st');
 
+    // 统一小写化 MIME：SigV4 签名会对 Content-Type 做 toLowerCase（sigv4.ts），
+    // 若这里用浏览器原始大小写（如 Text/Plain）而签名基于小写，R2 会判签名不匹配返回 403。
+    // 因此 sign / PUT / commit 三处共用同一小写值，保证与签名契约完全一致。
+    const type = (file.type || 'application/octet-stream').toLowerCase();
     try {
       const signRes = await fetch('/api/sign', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path, size: file.size, type: file.type || 'application/octet-stream' }),
+        body: JSON.stringify({ path, size: file.size, type }),
       });
       const sign = await signRes.json();
       if (!signRes.ok) throw new Error(sign.error || '签名失败');
@@ -667,13 +681,13 @@ async function uploadFiles(fileList) {
       await putFile(sign.url, file, (p) => {
         bar.style.width = Math.round(p * 100) + '%';
         st.textContent = Math.round(p * 100) + '%';
-      });
+      }, type);
 
       st.textContent = '写入索引';
       const commit = await fetch('/api/commit', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path, size: file.size, type: file.type }),
+        body: JSON.stringify({ path, size: file.size, type }),
       });
       if (!commit.ok) throw new Error('索引写入失败');
 
