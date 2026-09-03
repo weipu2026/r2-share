@@ -80,22 +80,37 @@ Worker secrets。适合想"改完推上去就完事"的场景。
 
 ### 所需 GitHub Secrets
 
-在仓库 **Settings → Secrets and variables → Actions** 添加（变量名严格一致）：
+在仓库 **Settings → Secrets and variables → Actions** 添加（变量名严格一致，共 8 个）。
 
-| Secret | 用途 | 获取方式 |
+#### 必填（缺了部署必然失败）
+
+| Secret | 用途 | 怎么拿 / 长什么样 |
 | --- | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | 部署认证 | CF 控制台 → 我的个人资料 → API 令牌，需包含 **Workers Scripts Edit + R2** 权限 |
-| `CLOUDFLARE_ACCOUNT_ID` | 账户 id | CF 控制台右上角，形如 `084e3254b15bd93f2ced4651d04f1574` |
-| `KV_ID` | KV namespace id | `npx wrangler kv namespace list` 返回的 `r2share_kv` 的 id |
-| `ADMIN_PASSWORD` | 管理口令 | 与当前 CF Worker secret 保持一致 |
-| `SESSION_SECRET` | 会话签名密钥 | 与当前 CF Worker secret 保持一致 |
-| `R2_ACCESS_KEY_ID` | R2 S3 API 令牌 | CF 控制台 R2 → 管理 API 令牌 |
-| `R2_SECRET_ACCESS_KEY` | R2 S3 API 令牌 | 同上（只显示一次，创建时保存） |
-| `R2_ACCOUNT_ID` | R2 S3 API 令牌 | 同上 |
+| `CLOUDFLARE_API_TOKEN` | 部署认证（wrangler 用它登录 CF） | CF 控制台 → 右上角头像 → **我的个人资料 → API 令牌 → 创建令牌**。需包含 **Workers Scripts Edit** 和 **R2** 权限。形如 `cfut_xxxx`（较长） |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 id | CF 控制台**右上角**显示的账户 id，形如 `084e3254b15bd93f2ced4651d04f1574`（32 位十六进制） |
+| `KV_ID` | KV namespace id（`wrangler.toml` 里是占位符，部署时用它替换） | `npx wrangler kv namespace list` 输出里 `r2share_kv` 的 id；或 CF 控制台 → Workers 与 Pages → KV → 找到 `r2share_kv` 复制 id。也是 32 位十六进制 |
 
-> ⚠️ **GitHub Secrets 是权威来源**：每次部署都会用这里的值**覆盖** Cloudflare 端
-> 同名 secret。要改任何密钥，请先在 GitHub 改再推代码/重跑 workflow，不要只改
-> CF 控制台——否则下次部署会被 GitHub 的值覆盖回去。
+#### 必填（与上传模式有关）
+
+| Secret | 用途 | 怎么拿 / 长什么样 |
+| --- | --- | --- |
+| `R2_ACCESS_KEY_ID` | R2 S3 API 令牌的 Access Key。即使走 Worker 代理（`UPLOAD_VIA_WORKER=1`）也必须配——`isLocal()` 靠它判断不是本地回退模式 | CF 控制台 → R2 → 右上角 **管理 R2 API 令牌 → 创建**（权限 Object Read & Write）。形如 `45xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| `R2_ACCOUNT_ID` | 与 `CLOUDFLARE_ACCOUNT_ID` 相同 | 同一个账户 id，直接填一样的 |
+
+#### 选填（漏填会跳过同步、保留 CF 端现有值，但建议填全）
+
+| Secret | 用途 | 怎么拿 / 长什么样 |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | 网盘管理口令（登录用） | 自己想一个，或与 CF 端现有值保持一致。建议 8 位以上 |
+| `SESSION_SECRET` | **会话签名密钥**：登录后 cookie 用 HMAC-SHA256 加签，防止伪造/篡改登录态。**这个值只存密钥，不对外显示** | `openssl rand -hex 32` 生成，形如 `f7a2c9b1e8d4a6f0...`（64 位十六进制）。**注意**：改动它会让所有已登录用户需要重新登录一次（无副作用），可随时重置 |
+| `R2_SECRET_ACCESS_KEY` | 同一令牌的 Secret Key | 创建令牌时**只显示一次**，立即复制保存；丢了就新建一个令牌 |
+
+> ⚠️ 五个应用密钥（`ADMIN_PASSWORD`/`SESSION_SECRET`/R2_*）的 workflow 行为：
+> GitHub Secrets 是**权威来源**，每次部署用 GitHub 里的值**覆盖** CF 端同名 secret。
+> - 想改密钥：**先在 GitHub 改**，再 push 或手动重跑 workflow，不要只改 CF 控制台（否则会被覆盖回去）
+> - 某个 secret 漏填（值为空）：workflow **跳过同步**，保留 CF 端现有值，不会误清空
+>
+> ⚠️ **隐私**：GitHub Secret 的值只会在 Actions 运行时注入，**不要写进 README 或任何仓库文件**——仓库是公开的，写进去等于公开密钥。
 
 ### 手动触发
 
