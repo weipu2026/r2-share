@@ -32,12 +32,22 @@ README.md 预览弹层（标题右侧「下载」按钮直链下载）：
  ├─ 打开目录页   ──→ Worker 渲染 HTML（1 次请求；style.css/app.js 由 CF 边缘直接服务，0 次 Worker）
  │                      └─ fetch R2 上的 files.json（1 次 Class B 读）
  ├─ 下载文件     ──→ R2 公开桶直链 dl.114448.xyz（出口永远免费，不经过 Worker）
- └─ 上传文件     ──→ Worker 签名（1 次请求）→ 浏览器 presigned PUT 直传 R2
-                                          → Worker 写索引（1 次请求）
+ └─ 上传文件     ──→ Worker /api/sign（1 次请求）
+                     → 浏览器 PUT 同源 /api/local-put（1 次请求，Worker 内部写 R2）
+                     → Worker 写索引（1 次请求）
 ```
+
+默认上传走 **Worker 代理**（`UPLOAD_VIA_WORKER = "1"`）：浏览器的 PUT 指向本 Worker
+的同源路径，由 Worker 用 R2 binding 写入，**不依赖 `r2.cloudflarestorage.com` 直传**——
+该端点在某些网络（如国内）被墙，presigned 直传会 `ERR_ADDRESS_UNREACHABLE`。
+代价是上传数据流经 Worker 且上限受 Workers 请求体限制（≈100MB，与 `MAX_UPLOAD` 默认一致）。
 
 三条通道里，**下载完全不经过 Worker**；浏览只有首页 HTML 消耗 1 次 Worker 请求
 （静态资源由 CF 边缘直接服务，免费且无上限）。这是能做到零费用且抗刷的关键。
+
+如切换回 presigned 直传（设 `UPLOAD_VIA_WORKER = "0"`），上传明细见下表的
+「presigned 直传」备注：浏览器直传 R2 S3 端点，绕过 Workers 100MB 请求体上限，
+但要求网络能直连 `r2.cloudflarestorage.com`。
 
 ### 请求消耗
 
@@ -45,10 +55,10 @@ README.md 预览弹层（标题右侧「下载」按钮直链下载）：
 | --- | --- | --- | --- |
 | 浏览目录页 | 1（渲染 HTML） | 1 × Class B（读 files.json） | $0 |
 | 下载文件 | 0（公开桶直链） | 1 × Class B | $0 |
-| 上传 1 个文件 | 2（签名 + 写索引） | 2 × Class A + 2 × Class B（见下） | $0 |
+| 上传 1 个文件（Worker 代理） | 3（sign + PUT + commit） | 1 Class A put + 1 Class B head + 1 Class B 读 files.json + 1 Class A 写 | $0 |
 
-> 上传明细：presigned PUT 文件（1 Class A）+ commit 校验 head（1 Class B）
-> + 读 files.json（1 Class B）+ 写 files.json（1 Class A）。删除文件时对象删除免费。
+> presigned 直传备注：2 次 Worker 请求（sign + commit），数据不经过 Worker，
+> 上限为 5 GiB（R2 单对象）。Worker 代理模式上限为 Workers 请求体（≈100MB）。
 
 ### 免费额度边界（超出才收费）
 
@@ -59,6 +69,38 @@ README.md 预览弹层（标题右侧「下载」按钮直链下载）：
 | R2 Class A（写 / list） | 100 万/月 | $4.50/百万 |
 | R2 Class B（读） | 1000 万/月 | $0.36/百万 |
 | 出口流量 | **永久免费** | — |
+
+---
+
+## 一键部署（GitHub Actions）
+
+**推 `main` = 自动部署。** 仓库内置 `.github/workflows/deploy.yml`：push 到 `main`
+就会自动 `wrangler deploy`，并把 GitHub Secrets 当作权威来源同步到 Cloudflare
+Worker secrets。适合想"改完推上去就完事"的场景。
+
+### 所需 GitHub Secrets
+
+在仓库 **Settings → Secrets and variables → Actions** 添加（变量名严格一致）：
+
+| Secret | 用途 | 获取方式 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 部署认证 | CF 控制台 → 我的个人资料 → API 令牌，需包含 **Workers Scripts Edit + R2** 权限 |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 id | CF 控制台右上角，形如 `084e3254b15bd93f2ced4651d04f1574` |
+| `KV_ID` | KV namespace id | `npx wrangler kv namespace list` 返回的 `r2share_kv` 的 id |
+| `ADMIN_PASSWORD` | 管理口令 | 与当前 CF Worker secret 保持一致 |
+| `SESSION_SECRET` | 会话签名密钥 | 与当前 CF Worker secret 保持一致 |
+| `R2_ACCESS_KEY_ID` | R2 S3 API 令牌 | CF 控制台 R2 → 管理 API 令牌 |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 API 令牌 | 同上（只显示一次，创建时保存） |
+| `R2_ACCOUNT_ID` | R2 S3 API 令牌 | 同上 |
+
+> ⚠️ **GitHub Secrets 是权威来源**：每次部署都会用这里的值**覆盖** Cloudflare 端
+> 同名 secret。要改任何密钥，请先在 GitHub 改再推代码/重跑 workflow，不要只改
+> CF 控制台——否则下次部署会被 GitHub 的值覆盖回去。
+
+### 手动触发
+
+除 push 外，仓库 **Actions → Deploy r2share → Run workflow** 可随时手动跑一次
+（比如只改了 GitHub Secrets 想立即生效）。
 
 ---
 
