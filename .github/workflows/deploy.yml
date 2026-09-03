@@ -1,0 +1,74 @@
+# r2share 一键部署：push main = 自动发布到 Cloudflare Workers
+#
+# 前置条件 — 在仓库 Settings → Secrets and variables → Actions 配置：
+#   CLOUDFLARE_API_TOKEN   带 Workers Scripts Edit + R2 权限的 API Token
+#   CLOUDFLARE_ACCOUNT_ID  账户 id（形如 084e3254b15bd93f2ced4651d04f1574）
+#   KV_ID                  账户下 KV namespace r2share_kv 的 id（wrangler.toml 里是占位符）
+#   ADMIN_PASSWORD        管理口令（同步为 Worker secret）
+#   SESSION_SECRET         会话签名密钥（同步为 Worker secret）
+#   R2_ACCESS_KEY_ID       R2 S3 API 令牌（同步为 Worker secret）
+#   R2_SECRET_ACCESS_KEY   R2 S3 API 令牌（同步为 Worker secret）
+#   R2_ACCOUNT_ID          R2 S3 API 令牌（同步为 Worker secret）
+#
+# 与手动 wrangler 部署的取舍：本流水线把 GitHub Secrets 当作权威来源，每次部署
+# 都会用它的值覆盖 Cloudflare 端同名 secret——因此 GitHub 里的值必须与生产一致，
+# 改 secret 请先在 GitHub 修改再重跑，不要只改 CF 控制台。
+name: Deploy r2share
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm run deploy 内部 = npm run check && node scripts/with-config.mjs deploy
+      # KV_ID 走环境变量注入占位符（local-config.mjs 原生支持），CI 无需 .deploy.local.json
+      - name: Deploy Worker
+        run: npm run deploy
+        env:
+          KV_ID: ${{ secrets.KV_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 把 GitHub Secrets 作为权威来源同步到 Cloudflare Worker secrets。
+      # 空值守卫：GitHub 漏填的 secret（值为空的字符串）跳过同步，保留 CF 端现有值，
+      # 防止把已配置的生产密钥误清空（GitHub 未设置的 secret 引用会展开为空字符串）。
+      - name: Sync production secrets
+        run: |
+          set -euo pipefail
+          put() { # $1=secret名  $2=值；空值跳过，避免覆盖 CF 端现有配置
+            local name="$1" val="${2:-}"
+            if [ -z "$val" ]; then
+              echo "  · $name 未在 GitHub Secrets 配置，跳过（保留 CF 端现有值）"
+              return 0
+            fi
+            echo "$val" | npx wrangler secret put "$name" --name r2share >/dev/null 2>&1 \
+              && echo "  ✓ $name 已同步" || { echo "  ✗ $name 同步失败"; exit 1; }
+          }
+          put ADMIN_PASSWORD        "${{ secrets.ADMIN_PASSWORD }}"
+          put SESSION_SECRET        "${{ secrets.SESSION_SECRET }}"
+          put R2_ACCESS_KEY_ID      "${{ secrets.R2_ACCESS_KEY_ID }}"
+          put R2_SECRET_ACCESS_KEY  "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          put R2_ACCOUNT_ID         "${{ secrets.R2_ACCOUNT_ID }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
