@@ -1,1 +1,113 @@
-IyEvdXNyL2Jpbi9lbnYgbm9kZQovKioKICog5LiA5qyh5o6o6YCB5aSa5Liq5paH5Lu25YiwIEdpdEh1Yu+8iOWNlSBjb21taXTvvIxHaXQgRGF0YSBBUEnvvIkKICoKICog5Li65LuA5LmI6ZyA6KaB5a6D77yacHVzaC1naC5zaCDotbAgR2l0SHViIENvbnRlbnRzIEFQSSDpgJDmlofku7YgUFVU77yMCiAqIOavj+S4quaWh+S7tiA9IOS4gOS4qiBjb21taXQgPSDop6blj5HkuIDmrKEgQ0kgd29ya2Zsb3fjgILmnKzohJrmnKzmlLnnlKgKICogR2l0IERhdGEgQVBJ77yIYmxvYnMg4oaSIHRyZWVzIOKGkiBjb21taXRzIOKGkiByZWZz77yJ77yM5oqK5aSa5Liq5paH5Lu25ZCI5bm25oiQCiAqIOOAkOS4gOS4qiBjb21taXTjgJHmm7TmlrAgbWFpbiDliIbmlK8gcmVm77yMQ0kg5Y+q6Kem5Y+R5LiA5qyh44CCCiAqCiAqIOeUqOazle+8mgogKiAgIGV4cG9ydCBHSF9UT0tFTj0iZ2hwX3h4eCIgICAgICAgICMg6ZyA6KaBIHJlcG8gc2NvcGUKICogICBub2RlIHNjcmlwdHMvcHVzaC1vbmUtY29tbWl0Lm1qcyBwdWJsaWMvYXBwLmpzIHB1YmxpYy9zdHlsZS5jc3Mgc3JjL3ZpZXdzLnRzCiAqCiAqIOivtOaYju+8mgogKiAgIC0g5Y+q5o6o6YCB5YiX5Ye655qE5paH5Lu277yb5pyq5YiX5Ye655qE6L+c56iL5paH5Lu26YCa6L+HIGJhc2VfdHJlZSDoh6rliqjnu6fmib/vvIzkuI3kvJrkuKLlpLEKICogICAtIOWPquWkhOeQhiBnaXQg5bey6Lef6Liq55qE5paH5Lu277yI6Ziy6K+v5Lyg56eB5pyJ5paH5Lu277yJCiAqICAgLSDoi6Xmn5Dmlofku7blnKjov5znqIvkuI3lrZjlnKjkuZ/kvJrmraPluLjlt6XkvZzvvIhibG9iIOW7uuWlveWQjui/myB0cmVlIOWNs+WPr++8iQogKi8KaW1wb3J0IHsgcmVhZEZpbGVTeW5jIH0gZnJvbSAnbm9kZTpmcyc7CmltcG9ydCB7IGV4ZWNTeW5jIH0gZnJvbSAnbm9kZTpjaGlsZF9wcm9jZXNzJzsKCmNvbnN0IFJFUE8gPSBwcm9jZXNzLmVudi5HSF9SRVBPIHx8ICd3ZWlwdTIwMjYvcjItc2hhcmUnOwpjb25zdCBCUkFOQ0ggPSBwcm9jZXNzLmVudi5HSF9CUkFOQ0ggfHwgJ21haW4nOwpjb25zdCBUT0tFTiA9IHByb2Nlc3MuZW52LkdIX1RPS0VOOwpjb25zdCBBVVRIT1IgPSB7IG5hbWU6ICdyMnNoYXJlLWRlcGxveScsIGVtYWlsOiAncjJzaGFyZUB1c2Vycy5ub3JlcGx5LmdpdGh1Yi5jb20nIH07CgppZiAoIVRPS0VOKSB7CiAgY29uc29sZS5lcnJvcign4pyXIOivt+WFiOiuvue9rueOr+Wig+WPmOmHjyBHSF9UT0tFTu+8iEdpdEh1YiBQQVTvvIzpnIAgcmVwbyBzY29wZe+8iScpOwogIHByb2Nlc3MuZXhpdCgxKTsKfQpjb25zdCBmaWxlcyA9IHByb2Nlc3MuYXJndi5zbGljZSgyKTsKaWYgKCFmaWxlcy5sZW5ndGgpIHsKICBjb25zb2xlLmVycm9yKCfinJcg55So5rOV77yabm9kZSBzY3JpcHRzL3B1c2gtb25lLWNvbW1pdC5tanMgPGZpbGUxPiBbZmlsZTIgLi4uXScpOwogIHByb2Nlc3MuZXhpdCgxKTsKfQoKY29uc3QgYXBpID0gYGh0dHBzOi8vYXBpLmdpdGh1Yi5jb20vcmVwb3MvJHtSRVBPfWA7CmFzeW5jIGZ1bmN0aW9uIGdoKHBhdGgsIG9wdHMgPSB7fSkgewogIGNvbnN0IHJlcyA9IGF3YWl0IGZldGNoKGFwaSArIHBhdGgsIHsKICAgIC4uLm9wdHMsCiAgICBoZWFkZXJzOiB7CiAgICAgIGF1dGhvcml6YXRpb246IGBCZWFyZXIgJHtUT0tFTn1gLAogICAgICBhY2NlcHQ6ICdhcHBsaWNhdGlvbi92bmQuZ2l0aHViK2pzb24nLAogICAgICAndXNlci1hZ2VudCc6ICdyMnNoYXJlLXB1c2gnLAogICAgICAnY29udGVudC10eXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nLAogICAgICAuLi4ob3B0cy5oZWFkZXJzIHx8IHt9KSwKICAgIH0sCiAgfSk7CiAgY29uc3QgZGF0YSA9IGF3YWl0IHJlcy5qc29uKCkuY2F0Y2goKCkgPT4gKHt9KSk7CiAgaWYgKCFyZXMub2spIHRocm93IG5ldyBFcnJvcihgSFRUUCAke3Jlcy5zdGF0dXN9OiAke0pTT04uc3RyaW5naWZ5KGRhdGEpLnNsaWNlKDAsIDIwMCl9YCk7CiAgcmV0dXJuIGRhdGE7Cn0KCi8vIOagoemqjOaWh+S7tuiiqyBnaXQg6Lef6Liq77yM6Ziy5q2i6K+v5Lyg56eB5pyJ5paH5Lu2CmNvbnN0IHRyYWNrZWQgPSBleGVjU3luYygnZ2l0IGxzLWZpbGVzJywgeyBlbmNvZGluZzogJ3V0ZjgnIH0pLnNwbGl0KCdcbicpLmZpbHRlcihCb29sZWFuKTsKY29uc3QgdmFsaWQgPSBbXTsKZm9yIChjb25zdCBmIG9mIGZpbGVzKSB7CiAgaWYgKCF0cmFja2VkLmluY2x1ZGVzKGYpKSB7IGNvbnNvbGUubG9nKGBTS0lQICR7Zn3vvIjmnKrooqsgZ2l0IOi3n+i4qu+8jOaLkue7neS4iuS8oO+8iWApOyBjb250aW51ZTsgfQogIHZhbGlkLnB1c2goZik7Cn0KaWYgKCF2YWxpZC5sZW5ndGgpIHsKICBjb25zb2xlLmVycm9yKCfmsqHmnInlj6/mjqjpgIHnmoTmlofku7YnKTsKICBwcm9jZXNzLmV4aXQoMSk7Cn0KCi8vIDEpIOS4uuavj+S4quaWh+S7tuWIm+W7uiBibG9iCmNvbnN0IGJsb2JzID0gW107CmZvciAoY29uc3QgZiBvZiB2YWxpZCkgewogIGNvbnN0IGNvbnRlbnQgPSByZWFkRmlsZVN5bmMoZikudG9TdHJpbmcoJ2Jhc2U2NCcpOwogIGNvbnN0IGIgPSBhd2FpdCBnaCgnL2dpdC9ibG9icycsIHsgbWV0aG9kOiAnUE9TVCcsIGJvZHk6IEpTT04uc3RyaW5naWZ5KHsgY29udGVudCB9KSB9KTsKICBibG9icy5wdXNoKHsgcGF0aDogZiwgc2hhOiBiLnNoYSB9KTsKICBjb25zb2xlLmxvZyhgICDCtyBibG9iICR7Zn0gLT4gJHtiLnNoYS5zbGljZSgwLCA3KX3igKZgKTsKfQoKLy8gMikg6K+75Y+W5b2T5YmNIEhFQUQg55qEIGNvbW1pdCDkuI4gdHJlZe+8iGJhc2VfdHJlZSDnlKjvvIkKY29uc3QgcmVmID0gYXdhaXQgZ2goYC9naXQvcmVmL2hlYWRzLyR7QlJBTkNIfWApOwpjb25zdCBjb21taXQgPSBhd2FpdCBnaChgL2dpdC9jb21taXRzLyR7cmVmLm9iamVjdC5zaGF9YCk7CmNvbnNvbGUubG9nKGDlvZPliY0gSEVBRO+8miR7cmVmLm9iamVjdC5zaGEuc2xpY2UoMCwgMTApfeKApmApOwoKLy8gMykg5p6E6YCg5pawIHRyZWXvvIhiYXNlX3RyZWUg57un5om/5pyq5pS55Yqo55qE5paH5Lu277yJCmNvbnN0IHRyZWUgPSBhd2FpdCBnaCgnL2dpdC90cmVlcycsIHsKICBtZXRob2Q6ICdQT1NUJywKICBib2R5OiBKU09OLnN0cmluZ2lmeSh7CiAgICBiYXNlX3RyZWU6IGNvbW1pdC50cmVlLnNoYSwKICAgIHRyZWU6IGJsb2JzLm1hcCgoeyBwYXRoLCBzaGEgfSkgPT4gKHsgcGF0aCwgbW9kZTogJzEwMDY0NCcsIHR5cGU6ICdibG9iJywgc2hhIH0pKSwKICB9KSwKfSk7CgovLyA0KSDliJvlu7ogY29tbWl077yIcGFyZW50ID0g5b2T5YmNIEhFQUTvvIkKY29uc3QgbmV3Q29tbWl0ID0gYXdhaXQgZ2goJy9naXQvY29tbWl0cycsIHsKICBtZXRob2Q6ICdQT1NUJywKICBib2R5OiBKU09OLnN0cmluZ2lmeSh7CiAgICBtZXNzYWdlOiBgY2hvcmU6IHVwZGF0ZSAke3ZhbGlkLmpvaW4oJywgJyl9YCwKICAgIHRyZWU6IHRyZWUuc2hhLAogICAgcGFyZW50czogW3JlZi5vYmplY3Quc2hhXSwKICAgIGF1dGhvcjogQVVUSE9SLAogIH0pLAp9KTsKCi8vIDUpIOabtOaWsOWIhuaUryByZWbvvIjlj6rop6blj5HkuIDmrKEgcHVzaCDkuovku7Yg4oaSIOS4gOasoSBDSSBydW7vvIkKYXdhaXQgZ2goYC9naXQvcmVmcy9oZWFkcy8ke0JSQU5DSH1gLCB7CiAgbWV0aG9kOiAnUEFUQ0gnLAogIGJvZHk6IEpTT04uc3RyaW5naWZ5KHsgc2hhOiBuZXdDb21taXQuc2hhLCBmb3JjZTogZmFsc2UgfSksCn0pOwoKY29uc29sZS5sb2coJy0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tJyk7CmNvbnNvbGUubG9nKGDmiJDlip/mjqjpgIEgJHt2YWxpZC5sZW5ndGh9IOS4quaWh+S7tu+8iCR7YmxvYnMubGVuZ3RofSDkuKogYmxvYu+8ie+8jOWNlSBjb21taXTvvJoke25ld0NvbW1pdC5zaGEuc2xpY2UoMCwgMTApfeKApmApOwpjb25zb2xlLmxvZyhgQ0kg5bCG5Y+q6Kem5Y+RIDEg5qyhYCk7Cg==
+#!/usr/bin/env node
+/**
+ * 一次推送多个文件到 GitHub（单 commit，Git Data API）
+ *
+ * 为什么需要它：push-gh.sh 走 GitHub Contents API 逐文件 PUT，
+ * 每个文件 = 一个 commit = 触发一次 CI workflow。本脚本改用
+ * Git Data API（blobs → trees → commits → refs），把多个文件合并成
+ * 【一个 commit】更新 main 分支 ref，CI 只触发一次。
+ *
+ * 用法：
+ *   export GH_TOKEN="ghp_xxx"        # 需要 repo scope
+ *   node scripts/push-one-commit.mjs public/app.js public/style.css src/views.ts
+ *
+ * 说明：
+ *   - 只推送列出的文件；未列出的远程文件通过 base_tree 自动继承，不会丢失
+ *   - 只处理 git 已跟踪的文件（防误传私有文件）
+ *   - 若某文件在远程不存在也会正常工作（blob 建好后进 tree 即可）
+ */
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+const REPO = process.env.GH_REPO || 'weipu2026/r2-share';
+const BRANCH = process.env.GH_BRANCH || 'main';
+const TOKEN = process.env.GH_TOKEN;
+const AUTHOR = { name: 'r2share-deploy', email: 'r2share@users.noreply.github.com' };
+
+if (!TOKEN) {
+  console.error('✗ 请先设置环境变量 GH_TOKEN（GitHub PAT，需 repo scope）');
+  process.exit(1);
+}
+const files = process.argv.slice(2);
+if (!files.length) {
+  console.error('✗ 用法：node scripts/push-one-commit.mjs <file1> [file2 ...]');
+  process.exit(1);
+}
+
+const api = `https://api.github.com/repos/${REPO}`;
+async function gh(path, opts = {}) {
+  const res = await fetch(api + path, {
+    ...opts,
+    headers: {
+      authorization: `Bearer ${TOKEN}`,
+      accept: 'application/vnd.github+json',
+      'user-agent': 'r2share-push',
+      'content-type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${JSON.stringify(data).slice(0, 200)}`);
+  return data;
+}
+
+// 校验文件被 git 跟踪，防止误传私有文件
+const tracked = execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean);
+const valid = [];
+for (const f of files) {
+  if (!tracked.includes(f)) { console.log(`SKIP ${f}（未被 git 跟踪，拒绝上传）`); continue; }
+  valid.push(f);
+}
+if (!valid.length) {
+  console.error('没有可推送的文件');
+  process.exit(1);
+}
+
+// 1) 为每个文件创建 blob
+// GitHub blob API 的 content 为 base64 时，必须显式声明 encoding: "base64"，
+// 否则 GitHub 会把 base64 字符串当 utf-8 文本原样存入（文件损坏成 base64 文本）。
+const blobs = [];
+for (const f of valid) {
+  const content = readFileSync(f).toString('base64');
+  const b = await gh('/git/blobs', {
+    method: 'POST',
+    body: JSON.stringify({ content, encoding: 'base64' }),
+  });
+  blobs.push({ path: f, sha: b.sha });
+  console.log(`  · blob ${f} -> ${b.sha.slice(0, 7)}…`);
+}
+
+// 2) 读取当前 HEAD 的 commit 与 tree（base_tree 用）
+const ref = await gh(`/git/ref/heads/${BRANCH}`);
+const commit = await gh(`/git/commits/${ref.object.sha}`);
+console.log(`当前 HEAD：${ref.object.sha.slice(0, 10)}…`);
+
+// 3) 构造新 tree（base_tree 继承未改动的文件）
+const tree = await gh('/git/trees', {
+  method: 'POST',
+  body: JSON.stringify({
+    base_tree: commit.tree.sha,
+    tree: blobs.map(({ path, sha }) => ({ path, mode: '100644', type: 'blob', sha })),
+  }),
+});
+
+// 4) 创建 commit（parent = 当前 HEAD）
+const newCommit = await gh('/git/commits', {
+  method: 'POST',
+  body: JSON.stringify({
+    message: `chore: update ${valid.join(', ')}`,
+    tree: tree.sha,
+    parents: [ref.object.sha],
+    author: AUTHOR,
+  }),
+});
+
+// 5) 更新分支 ref（只触发一次 push 事件 → 一次 CI run）
+await gh(`/git/refs/heads/${BRANCH}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ sha: newCommit.sha, force: false }),
+});
+
+console.log('-----------------------------');
+console.log(`成功推送 ${valid.length} 个文件（${blobs.length} 个 blob），单 commit：${newCommit.sha.slice(0, 10)}…`);
+console.log(`CI 将只触发 1 次`);
