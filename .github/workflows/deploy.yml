@@ -2,7 +2,7 @@
 #
 # 前置条件 — 在仓库 Settings → Secrets and variables → Actions 配置：
 #   CLOUDFLARE_API_TOKEN   带 Workers Scripts Edit + R2 权限的 API Token
-#   CLOUDFLARE_ACCOUNT_ID  账户 id（形如 084e3254b15bd93f2ced4651d04f1574）
+#   CLOUDFLARE_ACCOUNT_ID  账户 id（32 位十六进制）
 #   KV_ID                  账户下 KV namespace r2share_kv 的 id（wrangler.toml 里是占位符）
 #   ADMIN_PASSWORD        管理口令（同步为 Worker secret）
 #   SESSION_SECRET         会话签名密钥（同步为 Worker secret）

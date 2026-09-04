@@ -87,7 +87,7 @@ Worker secrets。适合想"改完推上去就完事"的场景。
 | Secret | 用途 | 怎么拿 / 长什么样 |
 | --- | --- | --- |
 | `CLOUDFLARE_API_TOKEN` | 部署认证（wrangler 用它登录 CF） | CF 控制台 → 右上角头像 → **我的个人资料 → API 令牌 → 创建令牌**。需包含 **Workers Scripts Edit** 和 **R2** 权限。形如 `cfut_xxxx`（较长） |
-| `CLOUDFLARE_ACCOUNT_ID` | 账户 id | CF 控制台**右上角**显示的账户 id，形如 `084e3254b15bd93f2ced4651d04f1574`（32 位十六进制） |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 id | CF 控制台**右上角**显示的账户 id（32 位十六进制，形如 `a1b2c3...`） |
 | `KV_ID` | KV namespace id（`wrangler.toml` 里是占位符，部署时用它替换） | `npx wrangler kv namespace list` 输出里 `r2share_kv` 的 id；或 CF 控制台 → Workers 与 Pages → KV → 找到 `r2share_kv` 复制 id。也是 32 位十六进制 |
 
 #### 必填（与上传模式有关）
