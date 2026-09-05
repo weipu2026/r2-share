@@ -38,7 +38,9 @@ const json = (p, body) =>
   });
 
 async function upload(path, content, type) {
-  const signRes = await json('/api/sign', { path, size: content.length });
+  // 与前端 app.js 的契约一致：sign 必须带 type（SigV4 签名覆盖 content-type），
+  // 否则 presigned 直传模式下 PUT 带真实 type 会与签名的 octet-stream 不匹配 → 403
+  const signRes = await json('/api/sign', { path, size: content.length, type });
   if (!signRes.ok) return { ok: false, error: '签名失败 ' + signRes.status };
   const { url } = await signRes.json();
 

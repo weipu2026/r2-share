@@ -411,6 +411,13 @@ function renderOfficePreview(body, name, url) {
   }
 }
 
+/** 批量选择复选框：仅登录态显示（列表/网格共用） */
+function selCb(p) {
+  return CFG.isLogin
+    ? `<input type="checkbox" class="sel" data-sel="${esc(p)}" ${state.sel.has(p) ? 'checked' : ''} title="选择" aria-label="选择">`
+    : '';
+}
+
 function renderList(items) {
   const dirRows = items.dirs.map((d) => {
     const full = state.cur ? state.cur + '/' + d : d;
@@ -425,12 +432,6 @@ function renderList(items) {
       </div>
     </div>`;
   });
-
-  // 批量选择复选框：仅登录态显示（批量删除需要登录）
-  const selCb = (p) =>
-    CFG.isLogin
-      ? `<input type="checkbox" class="sel" data-sel="${esc(p)}" ${state.sel.has(p) ? 'checked' : ''} title="选择" aria-label="选择">`
-      : '';
 
   const fileRows = items.files.map((f) => {
     const canPreview = previewable(f);
@@ -457,12 +458,6 @@ function renderList(items) {
 }
 
 function renderGrid(items) {
-  // 批量选择复选框：仅登录态显示
-  const selCb = (p) =>
-    CFG.isLogin
-      ? `<input type="checkbox" class="sel" data-sel="${esc(p)}" ${state.sel.has(p) ? 'checked' : ''} title="选择" aria-label="选择">`
-      : '';
-
   const dirCells = items.dirs.map((d) => {
     const full = state.cur ? state.cur + '/' + d : d;
     return `<div class="cell" data-dir="${esc(full)}">
@@ -589,6 +584,16 @@ function bindRowEvents() {
   });
 }
 
+/** 删除请求（单个文件/目录/批量共用）：返回 { res, data } */
+async function apiDel(path, isDir) {
+  const res = await fetch(isDir ? '/api/dir' : '/api/file', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  return { res, data: await res.json().catch(() => ({})) };
+}
+
 /** 删除单个文件 */
 async function deleteOne(path) {
   const sure = await dialog({
@@ -598,12 +603,7 @@ async function deleteOne(path) {
     danger: true,
   });
   if (!sure) return;
-  const res = await fetch('/api/file', {
-    method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ path }),
-  });
-  const data = await res.json().catch(() => ({}));
+  const { res, data } = await apiDel(path);
   if (res.ok) {
     state.sel.delete(path);
     updateBatch();
@@ -623,12 +623,7 @@ async function deleteDir(path) {
     danger: true,
   });
   if (!sure) return;
-  const res = await fetch('/api/dir', {
-    method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ path }),
-  });
-  const data = await res.json().catch(() => ({}));
+  const { res, data } = await apiDel(path, true);
   if (res.ok) {
     // 移出可能被选中的该目录下所有文件
     for (const p of state.sel) if (p === path || p.startsWith(path + '/')) state.sel.delete(p);
@@ -642,11 +637,14 @@ async function deleteDir(path) {
 
 /* ---------------- 批量操作 ---------------- */
 
-/** 当前视图下的真实文件列表（不含目录占位），用于全选 */
+/** 当前视图下的真实文件列表（不含目录占位），用于全选与搜索渲染 */
 function currentVisibleFiles() {
   if (state.searchMode) {
     const q = state.q.toLowerCase();
-    return state.index.filter((f) => !f.p.endsWith('/') && f.p.toLowerCase().includes(q));
+    return state.index
+      // 跳过目录占位条目（<dir>/ 0 字节对象），只搜真实文件
+      .filter((f) => !f.p.endsWith('/') && f.p.toLowerCase().includes(q))
+      .map((f) => ({ ...f, name: f.p }));
   }
   return listDir(state.cur).files;
 }
@@ -658,10 +656,7 @@ function selectAllToggle() {
   const allSel = files.every((f) => state.sel.has(f.p));
   if (allSel) files.forEach((f) => state.sel.delete(f.p));
   else files.forEach((f) => state.sel.add(f.p));
-  // 同步页面上所有复选框的勾选态
-  document.querySelectorAll('.sel[data-sel]').forEach((cb) => {
-    cb.checked = state.sel.has(cb.dataset.sel);
-  });
+  // updateBatch 内会同步所有复选框的勾选态
   updateBatch();
 }
 
@@ -691,11 +686,7 @@ async function batchDelete() {
   if (!sure) return;
   let ok = 0;
   for (const p of [...state.sel]) {
-    const res = await fetch('/api/file', {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: p }),
-    });
+    const { res } = await apiDel(p);
     if (res.ok) ok++;
   }
   state.sel.clear();
@@ -714,14 +705,7 @@ function render() {
 
   let items;
   if (state.searchMode) {
-    const q = state.q.toLowerCase();
-    items = {
-      dirs: [],
-      files: state.index
-        // 跳过目录占位条目（<dir>/ 0 字节对象），只搜真实文件
-        .filter((f) => !f.p.endsWith('/') && f.p.toLowerCase().includes(q))
-        .map((f) => ({ ...f, name: f.p })),
-    };
+    items = { dirs: [], files: currentVisibleFiles() };
   } else {
     items = listDir(state.cur);
   }
@@ -788,6 +772,7 @@ async function renderReadme(items) {
   }
   try {
     const res = await fetch(dlUrl(hit.p));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     box.innerHTML = `<div class="hd"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>README.md</div><div class="bd md">${md(text)}</div>`;
     box.classList.remove('hidden');
@@ -806,8 +791,15 @@ function safeUrl(u) {
 
 /** 极简 markdown 子集渲染（先转义，再做标记替换） */
 function md(src) {
-  let s = esc(src);
-  s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (m, code) => `<pre><code>${code}</code></pre>`);
+  let s = esc(src).replace(/\x00/g, '');
+
+  // 代码块与行内代码先占位隔离：否则其中的 #、-、*、| 等会被
+  // 后续的标题/列表/hr/表格等行级替换误伤（如代码里的 "# 注释" 变 <h1>）
+  const stash = [];
+  const keep = (html) => `\x00${stash.push(html) - 1}\x00`;
+  s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (m, code) => keep(`<pre><code>${code}</code></pre>`));
+  s = s.replace(/`([^`\n]+)`/g, (m, code) => keep(`<code>${code}</code>`));
+
   s = s.replace(/^###### (.*)$/gm, '<h6>$1</h6>')
        .replace(/^##### (.*)$/gm, '<h5>$1</h5>')
        .replace(/^#### (.*)$/gm, '<h4>$1</h4>')
@@ -818,7 +810,6 @@ function md(src) {
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, url) => `<a href="${safeUrl(url)}" target="_blank" rel="noopener">${txt}</a>`);
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
-  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   s = s.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
   s = s.replace(/^---$/gm, '<hr>');
   // 表格：| a | b | 表头 + |---|---| 分隔行 + 数据行
@@ -838,10 +829,10 @@ function md(src) {
   s = s.replace(/(?:<li>[\s\S]*?<\/li>)(?:\s*<li>[\s\S]*?<\/li>)*/g, (m) => `<ul>${m}</ul>`);
   // 让块级元素各自独立成块，否则「段落 + 紧随的列表」会被当成一个段落整体包进 <p>
   s = s.replace(
-    /(<ul>[\s\S]*?<\/ul>|<table>[\s\S]*?<\/table>|<pre>[\s\S]*?<\/pre>|<blockquote>[\s\S]*?<\/blockquote>|<h[1-6]>[\s\S]*?<\/h[1-6]>|<hr>)/g,
+    /(<ul>[\s\S]*?<\/ul>|<table>[\s\S]*?<\/table>|<blockquote>[\s\S]*?<\/blockquote>|<h[1-6]>[\s\S]*?<\/h[1-6]>|<hr>)/g,
     '\n\n$1\n\n'
   );
-  return s
+  s = s
     .split(/\n{2,}/)
     .map((blk) => blk.trim())
     .filter(Boolean)
@@ -851,13 +842,23 @@ function md(src) {
         : `<p>${blk.replace(/\n/g, '<br>')}</p>`
     )
     .join('');
+  // 回填代码：块级代码若被段落包装（<p>\x00N\x00</p>）则连包装一起还原
+  s = s.replace(/<p>\x00(\d+)\x00<\/p>/g, (m, i) => stash[+i]);
+  return s.replace(/\x00(\d+)\x00/g, (m, i) => stash[+i]);
 }
 
 /* ---------------- 数据加载 ---------------- */
 
 async function loadIndex() {
+  // 非本地模式且未配置下载域：索引无法获取，跳过 fetch('') 直接按空索引渲染
+  const url = idxUrl();
+  if (!url) {
+    state.index = [];
+    render();
+    return;
+  }
   try {
-    const res = await fetch(idxUrl(), { cache: 'no-store' });
+    const res = await fetch(url, { cache: 'no-store' });
     const data = await res.json();
     state.index = Array.isArray(data.files) ? data.files : [];
     const up = $('idx-updated');

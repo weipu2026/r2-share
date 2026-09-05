@@ -34,7 +34,8 @@ const json = (p, body) =>
 
 async function upload(path, content, type) {
   const size = Buffer.byteLength(content);
-  const r = await json('/api/sign', { path, size });
+  // 与前端契约一致：sign 需带 type，否则 presigned 直传会因签名不含 content-type 而 403
+  const r = await json('/api/sign', { path, size, type });
   if (!r.ok) return console.log(`  签名失败 ${path}`);
   const { url } = await r.json();
   const put = await req(url, {

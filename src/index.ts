@@ -23,6 +23,7 @@ import {
   removeFile,
   removeDir,
   rebuildIndex,
+  readIndex,
   guessType,
 } from './store';
 
@@ -116,21 +117,9 @@ app.get('/', async (c) => {
 
 app.get('/api/local-index', async (c) => {
   if (!isLocal(c)) return c.text('生产环境请直接读取公开桶的 files.json', 400);
-  const obj = await c.env.BUCKET.get('files.json');
-  // 与前端 loadIndex 的容灾语义对齐：索引损坏时返回合法空索引而非垃圾原文
-  let body = '{"updated":0,"files":[]}';
-  if (obj) {
-    const text = await obj.text();
-    try {
-      const parsed = JSON.parse(text) as { files?: unknown };
-      if (parsed && Array.isArray(parsed.files)) body = text;
-    } catch {
-      /* 损坏 → 空索引，可用 /api/refresh 重建 */
-    }
-  }
-  return new Response(body, {
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
+  // 复用 readIndex 的容灾语义：索引不存在或损坏时返回空索引，可用 /api/refresh 重建
+  const idx = await readIndex(c.env.BUCKET);
+  return c.json(idx);
 });
 
 app.get('/api/local-get', async (c) => {

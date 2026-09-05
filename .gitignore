@@ -5,6 +5,8 @@ node_modules/
 .deploy.local.json
 # scripts/with-config.mjs 运行时生成的临时配置（含真实值，用完即删）
 .wrangler.local.toml
+# scripts/push-gh.sh 的临时请求体/响应（中断时可能残留）
+.push_*.json
 *.log
 .DS_Store
 .secrets*.tmp

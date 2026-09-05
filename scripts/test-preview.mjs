@@ -16,9 +16,9 @@ const noop = new Proxy({}, { get: () => () => {} });
 const load = new Function(
   'window',
   'document',
-  `${body}\nreturn { previewKind, previewable, isTextLike, kindOf, renamePasted, walkEntry, fmtSize };`
+  `${body}\nreturn { previewKind, previewable, isTextLike, kindOf, renamePasted, walkEntry, fmtSize, md };`
 );
-const { previewKind, previewable, renamePasted, walkEntry } = load(
+const { previewKind, previewable, renamePasted, walkEntry, md } = load(
   { __CFG__: { dlDomain: 'https://dl.example.com', isLogin: true } },
   noop
 );
@@ -147,6 +147,27 @@ eq('分批读取顺序正确（末项）', bigPaths[249], 'big/f249.txt');
 const deep = mkEntry('a', true, [mkEntry('b', true, [mkEntry('c', true, [mkEntry('d.txt', false)])])]);
 eq('三层深目录', (await collect(deep)).join(), 'a/b/c/d.txt');
 eq('空目录返回空', (await collect(mkEntry('empty', true, []))).length, 0);
+
+group('markdown 渲染 —— 代码隔离（回归：代码曾被行级替换污染）');
+eq(
+  '代码块内的 "# 注释" 不变标题',
+  md('```\n# 注释\n---\n- 项\n```').includes('<pre><code># 注释\n---\n- 项'),
+  true
+);
+eq(
+  '行内代码里的 ** 不被加粗',
+  md('`a**b**c`').includes('<code>a**b**c</code>'),
+  true
+);
+eq(
+  '行内代码里的 [x](y) 不变链接',
+  md('`[x](y)`').includes('<code>[x](y)</code>'),
+  true
+);
+eq('代码块外的标题仍生效', md('# 标题').startsWith('<h1>标题</h1>'), true);
+eq('代码块外的加粗仍生效', md('**粗**').includes('<strong>粗</strong>'), true);
+eq('代码块与正文可混排', md('前文\n\n```\ncode\n```').includes('<p>前文</p>') && md('前文\n\n```\ncode\n```').includes('<pre>'), true);
+eq('代码块内 | 不变表格', !md('```\n|a|b|\n|---|---|\n```').includes('<table>'), true);
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);
 process.exit(fail ? 1 : 0);
