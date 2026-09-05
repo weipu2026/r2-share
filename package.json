@@ -11,6 +11,8 @@
     "seed": "node scripts/seed.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test-crypto": "node scripts/test-crypto.mjs",
+    "test-preview": "node scripts/test-preview.mjs",
+    "test": "node scripts/test-crypto.mjs && node scripts/test-preview.mjs",
     "push:gh": "bash scripts/push-gh.sh",
     "types": "wrangler types"
   },

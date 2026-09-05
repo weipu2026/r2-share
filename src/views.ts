@@ -82,8 +82,19 @@ export function renderIndex(opts: RenderOptions): string {
         </div>
         <p>拖拽文件到这里上传，或 <span class="link">点击选择</span></p>
         <p class="dz-hint" id="dz-hint"></p>
+        <p class="dz-tip">支持拖入整个文件夹（保留目录结构）· 截图后按 Ctrl+V 可直接粘贴上传</p>
       </div>
       <input type="file" id="file-input" multiple hidden>
+    </div>
+
+    <div id="drop-mask" class="drop-mask hidden" aria-hidden="true">
+      <div class="dm-box">
+        <div class="dm-ic">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p class="dm-t">松开鼠标即可上传</p>
+        <p class="dm-s" id="dm-hint"></p>
+      </div>
     </div>
 
     <div id="uploading" class="uploading hidden"></div>

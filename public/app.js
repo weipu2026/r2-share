@@ -230,24 +230,68 @@ function idxUrl() {
 }
 
 /* ---------------- 预览 ----------------
- * 图片/视频/音频直接走浏览器原生能力；
- * 文本/Markdown 拉取内容在前端渲染（限 2MB，超出直接提示下载）；
- * 其余类型不弹窗，直接下载。
+ * 图片/视频/音频：浏览器原生标签；
+ * PDF：iframe 交给浏览器内置阅读器（零依赖，支持目录/缩放/查找）；
+ * 文本/代码/Markdown：拉取内容前端渲染（限 2MB，渲染时再截断一次）；
+ * Office：浏览器无法原生渲染，给出在线查看 + 下载入口。
  */
 
+/** 超过该大小不提供文本预览（避免拉取巨型文件） */
 const TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024;
+/** 实际渲染的字符上限：超过就截断，防止超大/单行文件把浏览器布局卡死 */
+const TEXT_RENDER_LIMIT = 400 * 1024;
 
-function previewable(name, size) {
+/** 可按纯文本渲染的扩展名（补齐 EXT_KIND.code 之外的常见文本/代码） */
+const TEXT_EXT = new Set([
+  'txt', 'text', 'log', 'csv', 'tsv', 'ini', 'toml', 'conf', 'cfg', 'env',
+  'properties', 'sql', 'xml', 'xhtml', 'htm', 'vue', 'svelte', 'jsx', 'tsx',
+  'mjs', 'cjs', 'scss', 'less', 'sass', 'rs', 'php', 'rb', 'pl', 'lua', 'r',
+  'cs', 'kt', 'swift', 'scala', 'dart', 'm', 'mm', 'h', 'hpp', 'cc', 'bat',
+  'cmd', 'ps1', 'pyw', 'gradle', 'cmake', 'dockerfile', 'gitignore',
+  'gitattributes', 'editorconfig', 'license', 'readme', 'nfo', 'diff', 'patch',
+]);
+
+/** Office 系列：浏览器无法原生渲染 */
+const OFFICE_EXT = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+
+/** 判断文件是否可按纯文本读取：MIME 属文本族、属 code 分类，或扩展名命中白名单 */
+function isTextLike(name, ctype) {
+  if (ctype) {
+    if (/^text\//i.test(ctype)) return true;
+    if (/\b(json|xml|javascript|x-shellscript|yaml|xhtml)/i.test(ctype)) return true;
+  }
+  // code 分类（js/ts/py/go/md/txt…）本身就是文本，TEXT_EXT 只负责补齐它之外的
+  if (kindOf(name, false) === 'code') return true;
+  return TEXT_EXT.has(String(name).split('.').pop().toLowerCase());
+}
+
+/**
+ * 返回文件的预览方式：
+ *   image / video / audio —— 浏览器原生标签
+ *   pdf    —— iframe（浏览器内置 PDF 阅读器）
+ *   text   —— fetch + textContent
+ *   office —— 浏览器无法原生渲染，给出在线查看 / 下载入口
+ *   null   —— 不支持预览（压缩包、epub 等）
+ */
+function previewKind(f) {
+  const name = f.name || String(f.p || '').split('/').pop();
   const kind = kindOf(name, false);
-  if (kind === 'image' || kind === 'video' || kind === 'audio') return true;
-  if (kind === 'code' && (size || 0) <= TEXT_PREVIEW_LIMIT) return true;
-  return false;
+  if (kind === 'image' || kind === 'video' || kind === 'audio') return kind;
+  const ext = String(name).split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'pdf';
+  if (OFFICE_EXT.has(ext)) return 'office';
+  if (isTextLike(name, f.c) && (f.s || 0) <= TEXT_PREVIEW_LIMIT) return 'text';
+  return null;
+}
+
+function previewable(f) {
+  return !!previewKind(f);
 }
 
 function openPreview(f) {
   // 索引对象没有 name 字段，从路径补齐（列表行对象已带 name）
   const name = f.name || f.p.split('/').pop();
-  const kind = kindOf(name, false);
+  const kind = previewKind(f) || 'text';
   const url = dlUrl(f.p);
   const box = $('pv');
   const body = $('pv-body');
@@ -257,6 +301,8 @@ function openPreview(f) {
   dl.href = url;
   dl.setAttribute('download', name);
   box.classList.remove('hidden');
+  // PDF / Office 需要更大的展示空间
+  box.classList.toggle('wide', kind === 'pdf' || kind === 'office');
   document.body.style.overflow = 'hidden';
 
   // 用 addEventListener 而非直接覆盖 document.onkeydown：
@@ -267,6 +313,7 @@ function openPreview(f) {
   const clear = () => {
     body.innerHTML = '';
     box.classList.add('hidden');
+    box.classList.remove('wide');
     $('pv-title').textContent = '';
     document.body.style.overflow = '';
     document.removeEventListener('keydown', onPvKey);
@@ -279,33 +326,89 @@ function openPreview(f) {
     body.innerHTML = `<video src="${esc(url)}" controls autoplay></video>`;
   } else if (kind === 'audio') {
     body.innerHTML = `<audio src="${esc(url)}" controls autoplay></audio>`;
+  } else if (kind === 'pdf') {
+    // PDF 交给浏览器内置阅读器：零依赖，Ctrl+F 查找、缩放、目录都是原生的。
+    // 能否内联渲染取决于对象里存的 Content-Type，若不是 application/pdf，
+    // 浏览器会改成下载——此时提示用「重建索引」让 guessType 修正 MIME。
+    body.innerHTML = `<iframe class="pv-pdf" src="${esc(url)}" title="${esc(name)}"></iframe>`;
+    if (f.c && !/application\/pdf/i.test(f.c)) {
+      const tip = document.createElement('div');
+      tip.className = 'pv-note';
+      tip.textContent = `该文件存储的 MIME 是 ${f.c}，浏览器可能会直接下载而不预览；可点工具栏「重建索引」修正。`;
+      body.appendChild(tip);
+    }
+  } else if (kind === 'office') {
+    renderOfficePreview(body, name, url);
   } else {
-    // 文本 / markdown：拉取后渲染
-    body.innerHTML = `<div class="pv-err">加载中…</div>`;
-    fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      })
-      .then((text) => {
-        if (/\.md$/i.test(name)) {
-          body.innerHTML = `<div class="pv-md md">${md(text)}</div>`;
-        } else {
-          // textContent 安全注入，杜绝任何文件内容转 HTML
-          const pre = document.createElement('pre');
-          pre.className = 'pv-text';
-          pre.textContent = text;
-          body.innerHTML = '';
-          body.appendChild(pre);
-        }
-      })
-      .catch((err) => {
-        body.innerHTML = `<div class="pv-err">加载失败：${esc(err.message || '网络错误')}</div>`;
-      });
+    renderTextPreview(body, name, url, f.s);
   }
 
   $('pv-close').onclick = clear;
   $('pv-mask').onclick = clear;
+}
+
+/** 文本 / markdown：拉取后以 textContent 注入，杜绝文件内容转 HTML */
+function renderTextPreview(body, name, url, size) {
+  body.innerHTML = `<div class="pv-err">加载中…</div>`;
+  fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then((text) => {
+      // 截断保护：超大文本只渲染前一段，尾部标注真实大小
+      if (text.length > TEXT_RENDER_LIMIT) {
+        text =
+          text.slice(0, TEXT_RENDER_LIMIT) +
+          `\n\n… 文件过大，已截断显示前 ${fmtSize(TEXT_RENDER_LIMIT)}` +
+          (size ? `（完整 ${fmtSize(size)}，请下载查看）` : '（请下载查看）');
+      }
+      if (/\.(md|markdown)$/i.test(name)) {
+        body.innerHTML = `<div class="pv-md md">${md(text)}</div>`;
+      } else {
+        // textContent 安全注入，杜绝任何文件内容转 HTML
+        const pre = document.createElement('pre');
+        pre.className = 'pv-text';
+        pre.textContent = text;
+        body.innerHTML = '';
+        body.appendChild(pre);
+      }
+    })
+    .catch((err) => {
+      body.innerHTML = `<div class="pv-err">加载失败：${esc(err.message || '网络错误')}</div>`;
+    });
+}
+
+/** Office 系列：浏览器无法原生渲染，给出在线查看 / 下载入口 */
+function renderOfficePreview(body, name, url) {
+  const ext = String(name).split('.').pop().toLowerCase();
+  const label =
+    { doc: 'Word', docx: 'Word', xls: 'Excel', xlsx: 'Excel', ppt: 'PowerPoint', pptx: 'PowerPoint' }[ext] ||
+    'Office';
+  // 在线查看要求文件能被公网访问：本地代理地址（/api/local-get?...）不行
+  const canOnline = !CFG.local && /^https?:\/\//i.test(url);
+
+  body.innerHTML = `<div class="pv-office">
+    <div class="of-ic">${icon(name, false)}</div>
+    <p class="of-t">${esc(label)} 文档无法直接在浏览器打开</p>
+    <p class="of-s">${
+      canOnline
+        ? '可用微软 Office 在线查看（文件需可被公网访问），或下载到本地用 Office / WPS 打开'
+        : '请下载到本地用 Office / WPS 打开'
+    }</p>
+    <div class="of-btns">
+      ${canOnline ? '<button class="btn btn-primary" id="pv-of-view">Office 在线查看</button>' : ''}
+      <a class="btn${canOnline ? '' : ' btn-primary'}" href="${esc(url)}" download="${esc(name)}">下载文件</a>
+    </div>
+  </div>`;
+
+  const view = $('pv-of-view');
+  if (view) {
+    view.onclick = () => {
+      const src = 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(url);
+      body.innerHTML = `<iframe class="pv-pdf" src="${esc(src)}" title="${esc(name)}"></iframe>`;
+    };
+  }
 }
 
 function renderList(items) {
@@ -330,7 +433,7 @@ function renderList(items) {
       : '';
 
   const fileRows = items.files.map((f) => {
-    const canPreview = previewable(f.name, f.s);
+    const canPreview = previewable(f);
     const nameHtml = canPreview
       ? `<a href="#" data-prev="${esc(f.p)}" title="${esc(f.name)}">${esc(f.name)}</a>`
       : `<a href="${esc(dlUrl(f.p))}" title="${esc(f.name)}">${esc(f.name)}</a>`;
@@ -471,7 +574,7 @@ function bindRowEvents() {
     if (cellEl) {
       // 点击网格单元格空白区：可预览则弹层，否则新窗口打开
       const f = state.index.find((x) => x.p === cellEl.dataset.cell);
-      if (f && previewable(f.name, f.s)) openPreview(f);
+      if (f && previewable(f)) openPreview(f);
       else window.open(dlUrl(cellEl.dataset.cell), '_blank');
     }
   });
@@ -787,12 +890,30 @@ function putFile(url, file, onProgress, ctype) {
   });
 }
 
-async function uploadFiles(fileList) {
+/** 简易并发池：一次拖入上千文件时逐个排队，避免瞬间打满请求把浏览器拖死 */
+async function pool(items, limit, worker) {
+  const queue = [...items];
+  const runners = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) await worker(queue.shift());
+  });
+  await Promise.all(runners);
+}
+
+/**
+ * 上传一批文件。入参元素支持两种形态：
+ *   File            —— 平铺上传到当前目录
+ *   { file, path }  —— 按 path（相对当前目录）上传，用于文件夹拖拽时保留目录结构
+ */
+async function uploadFiles(list) {
+  const items = [...list].map((it) => (it instanceof File ? { file: it, path: it.name } : it));
+  if (!items.length) return;
+
   const box = $('uploading');
   box.classList.remove('hidden');
+  if (items.length > 20) toast(`正在上传 ${items.length} 个文件…`);
 
-  // 并发发起所有上传（每个文件一行独立进度），失败行保留并给出重试按钮
-  await Promise.all([...fileList].map((file) => uploadOne(file, box)));
+  // 每个文件一行独立进度，失败行保留并给出重试按钮
+  await pool(items, 4, (item) => uploadOne(item.file, box, item.path));
 
   await loadIndex();
 }
@@ -800,12 +921,14 @@ async function uploadFiles(fileList) {
 /**
  * 上传单个文件。失败时不移除行，而是显示「重试」按钮，
  * 点击后对同一文件重新走 sign → PUT → commit。
+ * relPath：相对当前目录的路径（文件夹拖拽时为「目录/子目录/文件名」）
  */
-async function uploadOne(file, box) {
-  const path = state.cur ? state.cur + '/' + file.name : file.name;
+async function uploadOne(file, box, relPath) {
+  const rel = relPath || file.name;
+  const path = state.cur ? state.cur + '/' + rel : rel;
   const row = document.createElement('div');
   row.className = 'up-item';
-  row.innerHTML = `<span class="up-name">${esc(file.name)}</span>
+  row.innerHTML = `<span class="up-name" title="${esc(rel)}">${esc(rel)}</span>
     <span class="up-bar"><i></i></span>
     <span class="up-st">等待中</span>`;
   box.appendChild(row);
@@ -864,6 +987,156 @@ async function uploadOne(file, box) {
   await doUpload();
 }
 
+/* ---------------- 上传入口：拖放 + 粘贴 ---------------- */
+
+/**
+ * 从 DataTransfer 读出全部文件（含文件夹递归），返回 [{ file, path }]。
+ * 浏览器不支持 webkitGetAsEntry 时退化为平铺文件列表。
+ */
+async function filesFromDataTransfer(dt) {
+  const items = dt.items ? [...dt.items].filter((it) => it.kind === 'file') : [];
+  const entries = [];
+  for (const it of items) {
+    const en = typeof it.webkitGetAsEntry === 'function' ? it.webkitGetAsEntry() : null;
+    if (en) entries.push(en);
+  }
+  if (!entries.length) return dt.files && dt.files.length ? [...dt.files] : [];
+
+  const out = [];
+  for (const en of entries) await walkEntry(en, '', out);
+  return out;
+}
+
+/** 递归展开 entry：文件直接收，目录逐层下钻，path 保留相对目录结构 */
+function walkEntry(entry, prefix, out) {
+  return new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file(
+        (f) => {
+          out.push({ file: f, path: prefix + f.name });
+          resolve();
+        },
+        () => resolve() // 单个文件读取失败不应中断整批
+      );
+      return;
+    }
+    if (!entry.isDirectory) return resolve();
+
+    // 坑：readEntries 每次最多返回 100 项，必须反复调用直到返回空数组才算读完
+    const reader = entry.createReader();
+    const children = [];
+    const readBatch = () => {
+      reader.readEntries(
+        (batch) => {
+          if (!batch.length) {
+            Promise.all(children.map((c) => walkEntry(c, prefix + entry.name + '/', out))).then(
+              () => resolve()
+            );
+            return;
+          }
+          children.push(...batch);
+          readBatch();
+        },
+        () => resolve()
+      );
+    };
+    readBatch();
+  });
+}
+
+/** 整页拖放：拖文件到页面任意位置即可上传，文件夹保留目录结构 */
+function bindDrop() {
+  const dz = $('dropzone');
+  const mask = $('drop-mask');
+  const hint = $('dm-hint');
+  // 拖过子元素会反复触发 dragleave，用深度计数判定是否真的离开了页面
+  let depth = 0;
+
+  const hasFiles = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return !!types && [...types].includes('Files');
+  };
+  const show = (on) => {
+    if (mask) mask.classList.toggle('hidden', !on);
+    if (dz) dz.classList.toggle('over', on);
+    if (on && hint) {
+      hint.textContent =
+        '上传到：' + (state.cur || '根目录') + (CFG.isLogin ? '' : '（未登录，无法上传）');
+    }
+  };
+
+  document.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth++;
+    show(true);
+  });
+
+  document.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); // 不阻止默认行为，浏览器会直接打开文件、把页面顶掉
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    if (!hasFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) show(false);
+  });
+
+  document.addEventListener('drop', async (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    show(false);
+    if (!CFG.isLogin) {
+      toast('请先登录再上传', 'err');
+      return;
+    }
+    const list = await filesFromDataTransfer(e.dataTransfer);
+    if (list.length) uploadFiles(list);
+  });
+}
+
+/** 粘贴上传：截图后 Ctrl+V 直接传，当图床用 */
+function bindPaste() {
+  document.addEventListener('paste', (e) => {
+    if (!CFG.isLogin) return;
+    // 焦点在输入框里时，粘贴的是文本而非文件，不该触发上传
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+
+    const files = [];
+    for (const it of [...items]) {
+      if (it.kind !== 'file') continue;
+      const f = it.getAsFile();
+      if (f) files.push(f);
+    }
+    if (!files.length) return;
+
+    e.preventDefault();
+    uploadFiles(files.map(renamePasted));
+  });
+}
+
+/** 截图粘贴出来的文件默认叫 image.png，连传几次就互相覆盖，改成时间戳命名 */
+function renamePasted(file) {
+  if (!/^image\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name)) return file;
+  const ext = file.name.split('.').pop();
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp =
+    `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-` +
+    `${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return new File([file], `截图-${stamp}.${ext}`, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+}
+
 /* ---------------- 事件绑定 ---------------- */
 
 function bindEvents() {
@@ -890,22 +1163,6 @@ function bindEvents() {
     if (input.files.length) uploadFiles([...input.files]);
     input.value = '';
   };
-
-  ['dragenter', 'dragover'].forEach((ev) =>
-    dz.addEventListener(ev, (e) => {
-      e.preventDefault();
-      dz.classList.add('over');
-    })
-  );
-  ['dragleave', 'drop'].forEach((ev) =>
-    dz.addEventListener(ev, (e) => {
-      e.preventDefault();
-      dz.classList.remove('over');
-    })
-  );
-  dz.addEventListener('drop', (e) => {
-    if (e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]);
-  });
 
   $('v-list').onclick = () => {
     state.view = 'list';
@@ -1048,5 +1305,7 @@ function bindEvents() {
 bindEvents();
 // 行/单元格操作事件委托只需初始化一次（内部用 closest 分发）
 bindRowEvents();
+bindDrop();
+bindPaste();
 updateBatch();
 loadIndex();

@@ -983,3 +983,100 @@ a.mini { display: inline-flex; align-items: center; }
   main.wrap { margin-top: 10px; }
   .crumb { padding: 11px 12px 0; }
 }
+
+/* ============================================================
+ * 文档预览（PDF / 文本 / Office）
+ * ============================================================ */
+
+/* PDF、Office 需要更大的展示空间；内容自上而下排，底部可挂提示条 */
+.pv.wide .pv-box { width: min(1100px, 100%); }
+.pv.wide .pv-bd {
+  min-height: 60vh;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.pv-bd .pv-pdf {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 420px;
+  border: 0;
+  display: block;
+  background: var(--card);
+}
+
+/* 预览区底部的小提示（如 MIME 异常时的说明） */
+.pv-bd .pv-note {
+  flex: none;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #8a6d3b;
+  background: #fcf8e3;
+  border-top: 1px solid #f5e6c8;
+}
+
+/* Office 文件：浏览器无法原生渲染时的引导卡 */
+.pv-bd .pv-office {
+  align-self: stretch;
+  width: 100%;
+  padding: 46px 24px 40px;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.pv-office .of-ic {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-weak);
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+.pv-office .of-ic svg { width: 28px; height: 28px; }
+
+.pv-office .of-t { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.pv-office .of-s { margin: 0; font-size: 13px; color: var(--muted); max-width: 460px; line-height: 1.7; }
+.pv-office .of-btns { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+
+/* ============================================================
+ * 上传增强：整页拖放 + 粘贴
+ * ============================================================ */
+
+.dropzone .dz-tip {
+  font-size: 12px !important;
+  color: var(--faint);
+  margin-top: 6px !important;
+}
+
+.drop-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(57, 61, 73, .55);
+  backdrop-filter: blur(2px);
+}
+
+.drop-mask .dm-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 56px;
+  border: 2px dashed rgba(255, 255, 255, .7);
+  border-radius: 10px;
+  color: #fff;
+  text-align: center;
+}
+
+.drop-mask .dm-ic { color: #fff; opacity: .92; }
+.drop-mask .dm-t { margin: 8px 0 0; font-size: 16px; font-weight: 600; }
+.drop-mask .dm-s { margin: 0; font-size: 13px; opacity: .82; }
