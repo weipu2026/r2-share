@@ -106,8 +106,9 @@ Markdown / 文本预览弹层（标题栏右侧「下载」按钮直链下载）
 ## 部署（推荐：GitHub 一键安装）
 
 **Fork → 配好 Secrets → push `main`，完事。** 仓库内置 `.github/workflows/deploy.yml`：
-push 到 `main` 就自动 `wrangler deploy`，并把 GitHub Secrets 当作权威来源同步到
-Cloudflare Worker secrets。
+push 到 `main` 会自动按 **校验必填项 → 跑单元测试（`npm test`，不过即中止）→
+`wrangler deploy` → 同步 secrets → （仅直传模式）应用桶 CORS** 的顺序执行，
+并把 GitHub 里的值当作**权威来源**，覆盖 Cloudflare 端同名 Worker secret。
 
 ### 域名为什么必须部署时才注入
 
@@ -333,8 +334,8 @@ npm install
 cp .dev.vars.example .dev.vars   # 按需改口令；要跑 deploy/gen-config 还要填 WORKER_DOMAIN、DL_DOMAIN
 npm run dev                      # http://127.0.0.1:8787（用模板 wrangler.toml）
 node scripts/seed.mjs            # 灌入演示数据
-TEST_PASSWORD='<.dev.vars 里的 ADMIN_PASSWORD>' node scripts/smoke.mjs   # 全流程冒烟（64 项，含 Range 切片）
-npm test                         # 单元测试（271 项，见下）
+npm run smoke                    # 全流程冒烟（65 项，含 Range 切片）；口令自动读 .dev.vars
+npm test                         # 单元测试（368 项，见下）
 npm run gen-config               # 部署前：生成 wrangler.deploy.toml（域名取自环境变量 / .dev.vars）
 npm run check                    # 部署前自检（校验生成物）
 ```
@@ -344,18 +345,28 @@ npm run check                    # 部署前自检（校验生成物）
 > 想在本地区验证真实公开桶直链，先 `npm run gen-config`，再
 > `wrangler dev --config wrangler.deploy.toml`。
 
-`npm test` 会依次跑五套**纯离线**测试（不需要起服务、不连网络）：
+`npm test` 会依次跑六套**纯离线**测试（不需要起服务、不连网络）：
 
 | 脚本 | 覆盖 | 项数 |
 | --- | --- | --- |
-| `scripts/test-crypto.mjs` | SigV4 签名向量、会话 cookie 加签/验签 | 14 |
+| `scripts/test-crypto.mjs` | SigV4 签名向量、会话 cookie 加签/验签、口令比对（`checkPassword`） | 30 |
 | `scripts/test-mode.mjs` | 运行模式判定（代理/直连、上传通道）、会话密钥派生与守卫 | 25 |
-| `scripts/test-store.mjs` | 路径与 MIME 校验、索引 CAS（含冲突重试、批量幂等、无变化不写、递归删目录）、写入口径与 409 映射契约 | 116 |
+| `scripts/test-store.mjs` | 路径与 MIME 校验、索引 CAS（含冲突重试、批量幂等、无变化不写、递归删目录）、写入口径与 409 映射契约 | 117 |
 | `scripts/test-preview.mjs` | 前端纯函数：预览分类、Markdown 渲染 | 54 |
-| `scripts/test-frontend.mjs` | 前端状态逻辑（最小 DOM 替身）+ 源码契约（分批上限、失败提示去重、O(N×M) 回归）+ 部署配置断言 | 62 |
+| `scripts/test-frontend.mjs` | 前端状态逻辑（最小 DOM 替身）+ 源码契约（分批上限、跨端契约、事件委托行为、请求令牌、失败提示去重、O(N×M) 回归）+ 部署配置断言 | 94 |
+| `scripts/test-routes.mjs` | 路由级端到端（内存桶替身 + Hono `app.request`）：`/api/mkdir` 幂等、`/api/dir`、`/api/refresh`、`/api/logout`、`/api/local-put` 的 413 与代理/生产分支、`/api/commit` 部分成功语义 | 48 |
 
-`TEST_PASSWORD` 不传时会用默认值 `dev123456`，与 `.dev.vars` 里的真实口令对不上，
-表现为登录 401 之后整串用例连锁失败——**跑冒烟务必显式带上它**。
+`scripts/test-routes.mjs` 直接 import `src/index.ts`，而源码里用的是**无扩展名 import**
+（`./views`）—— 打包器能解析、Node 原生 ESM 不能，所以它经 `npm run test-routes`
+用 `--import ./scripts/_ts-loader-register.mjs` 挂一个解析钩子之后再跑。
+
+冒烟脚本的口令解析顺序是 **环境变量 `TEST_PASSWORD` → `.dev.vars` 里的 `ADMIN_PASSWORD`
+→ 默认值 `dev123456`**，所以本地配好 `.dev.vars` 后直接 `npm run smoke` 即可，不必再手动传。
+
+> ⚠️ **冒烟脚本带 host 守卫**：它会调用 `/api/refresh` **全量重写索引**并真的删除文件，
+> 因此默认只接受 `127.0.0.1` / `localhost` / `[::1]`。确实要指向远程实例时必须显式加
+> `--allow-remote`（`node scripts/smoke.mjs https://… --allow-remote`），并务必确认
+> 那是一个可以随便改的测试实例。
 
 生产浏览器 E2E（真实 Edge 登录→上传→渲染→dl 下载→删除，9 项断言）：
 
@@ -459,10 +470,15 @@ rclone sync r2:r2share b2:你的桶 --progress
 ## 已知限制
 
 - 没有网页端的文件重命名 / 移动 / 打包下载（R2 无 rename，目录移动是 O(n) 操作），需要时用 rclone
-- 目录页不是严格实时：`files.json` 写入时带 `Cache-Control: public, max-age=10`
-  （`src/store.ts` 的 `INDEX_META`），**CDN 层**最多缓存 10 秒；前端拉取时另加
-  `cache: 'no-store'`，让**浏览器**不吃本地缓存。日常上传 / 删除靠前端本地增量更新
-  立即可见，只有「刷新页面重新拉整份索引」才可能读到 10 秒内的旧索引
+- 目录页不是严格实时——但**不是**靠对象上的缓存头：`files.json` 写入时虽带
+  `Cache-Control: public, max-age=10`（`src/store.ts` 的 `INDEX_META`），**Cloudflare 的默认
+  缓存规则并不缓存 `.json`**（实测响应头是 `cf-cache-status: DYNAMIC`），那条头实际不生效，
+  **每次进页面都是一次真实的 R2 回源**；前端拉取时另加 `cache: 'no-store'`，让**浏览器**
+  也不吃本地缓存。日常上传 / 删除靠前端本地增量更新立即可见，只有「刷新页面重新拉整份
+  索引」才会重新回源
+- 想让 `files.json` 真正可缓存（它是整条链路里最主要的回源开销），得在 Cloudflare 侧为它
+  单独加一条 **Cache Rule**，或改成带 `ETag` 的条件请求（R2 直链实测支持
+  `304 Not Modified`，索引没变时传输体≈0）
 - **一次提交索引的批大小是 400**（`MAX_COMMIT_BATCH`）：`/api/commit` 每一条都要
   一次 R2 `head` 校验对象真实存在，再加一次索引读 + 一次索引写，N 条就是
   **N+2 个子请求**；而 Cloudflare 对「内部服务（R2 / KV / D1）子请求」有

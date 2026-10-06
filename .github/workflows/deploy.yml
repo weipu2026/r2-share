@@ -20,7 +20,7 @@
 #   R2_ACCOUNT_ID           留空 → 复用 CLOUDFLARE_ACCOUNT_ID（S3 端点同值）
 #
 # 流水线顺序：Validate（必填项 fail-fast）→ Test（单测门禁）→ Deploy → Sync secrets → Apply CORS（仅直传模式）
-# 三步都在同一个 job 里，gen-config 产出的 wrangler.deploy.toml / cors.deploy.json 会留给后续步骤读。
+# 各步骤都在同一个 job 里，gen-config 产出的 wrangler.deploy.toml / cors.deploy.json 会留给后续步骤读。
 #
 # 两类变量都支持：同名配置会优先读 Variables，其次读 Secrets（向后兼容）。
 # 域名、桶名这些不是密钥，放 Variables 的好处是随时可见、可改，不用「重新输入才看得到」。
