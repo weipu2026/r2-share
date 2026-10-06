@@ -11,7 +11,7 @@
 
 import { createHmac, createHash } from 'node:crypto';
 import { presignPut } from '../src/sigv4.ts';
-import { createSession, verifySession } from '../src/auth.ts';
+import { createSession, verifySession, checkPassword, timingSafeEqual } from '../src/auth.ts';
 
 let pass = 0;
 let fail = 0;
@@ -113,7 +113,8 @@ function refPresign(creds, key, expires, now, contentType = 'application/octet-s
   const uriEncode = (s) =>
     encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
   const canonicalUri = `/${bucket}/${key.split('/').map(uriEncode).join('/')}`;
-  const canonicalType = contentType.toLowerCase().replace(/\s+/g, ' ').trim();
+  // 与 src/sigv4.ts 同口径：头值只折叠空白 + trim，不小写（SigV4 只要求头名小写）
+  const canonicalType = contentType.replace(/\s+/g, ' ').trim();
   const params = {
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': `${accessKeyId}/${scope}`,
@@ -172,6 +173,15 @@ const CASES = [
   if (c1 !== c2 || c1 === c3) mismatch++;
   ok(`双实现对拍 ${CASES.length} 组用例全部一致（含 URL 结构）`, mismatch === 0);
   ok('content-type 参与签名（不同 type 不同签名）', c1 !== c3 && c1 === c2);
+
+  // 大小写必须原样进签名：SigV4 只要求**头名**小写，头值是签名内容。
+  // 若实现里又冒出 toLowerCase，这两条会立刻翻红（大小写不同的 MIME 会算出同一个签名）。
+  const mixed = 'Text/Plain; Charset=UTF-8';
+  const cm1 = await presignPut(CREDS, "x.txt", 3600, FIXED_NOW, mixed);
+  const cm2 = refPresign(CREDS, "x.txt", 3600, FIXED_NOW, mixed);
+  const cm3 = await presignPut(CREDS, "x.txt", 3600, FIXED_NOW, mixed.toLowerCase());
+  ok('大小写混写的 Content-Type 双实现一致', cm1 === cm2);
+  ok('内容相同、大小写不同的 Content-Type 签名不同（大小写确实进签名）', cm1 !== cm3);
 }
 
 {
@@ -210,6 +220,33 @@ console.log('\n[auth 会话 cookie]');
   ok('空 cookie 被拒绝', (await verifySession(secret, undefined)) === false);
   ok('无点号 cookie 被拒绝', (await verifySession(secret, 'garbage')) === false);
   ok('畸形 base64 被拒绝', (await verifySession(secret, '!!!.???')) === false);
+}
+
+/* ============ 4. checkPassword：安全关键路径 ============
+ * 这条是「登录能不能被绕过」的唯一判据，此前零单测覆盖。
+ */
+console.log('\n[checkPassword 口令校验]');
+
+{
+  const PW = 'hunter2-足够长的口令';
+  ok('正确口令通过', (await checkPassword(PW, PW)) === true);
+  ok('错误口令被拒', (await checkPassword('hunter2-足够长的口今', PW)) === false);
+  ok('空输入被拒', (await checkPassword('', PW)) === false);
+  ok('期望值为空时只有空输入「相等」，但调用方有 !expected 守卫',
+    (await checkPassword('', '')) === true);
+  ok('空期望值 + 非空输入被拒', (await checkPassword('x', '')) === false);
+  ok('长度不同也被拒（先各自摘要再比较）',
+    (await checkPassword('short', 'a-much-longer-password')) === false);
+  ok('大小写敏感', (await checkPassword('PassWord', 'password')) === false);
+  ok('首尾空白视为不同口令（不做 trim）', (await checkPassword(' pw ', 'pw')) === false);
+  ok('中文口令可匹配（编码一致）', (await checkPassword('口令密码一二三四', '口令密码一二三四')) === true);
+  ok('emoji 口令可匹配（多字节）', (await checkPassword('pass-🔐-word', 'pass-🔐-word')) === true);
+
+  // 常量时间比较的边界：长度不等必须返回 false 且不抛错
+  ok('timingSafeEqual 等长相等', timingSafeEqual('abc', 'abc') === true);
+  ok('timingSafeEqual 等长不等', timingSafeEqual('abc', 'abd') === false);
+  ok('timingSafeEqual 长度不等', timingSafeEqual('abc', 'abcd') === false);
+  ok('timingSafeEqual 空串', timingSafeEqual('', '') === true);
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);

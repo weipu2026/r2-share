@@ -323,6 +323,8 @@ function openPreview(f) {
     if (e.key === 'Escape' && !box.classList.contains('hidden')) clear();
   };
   const clear = () => {
+    // 作废在途的文本预览响应：否则弹层关闭后它仍会把内容写回来
+    pvSeq++;
     body.innerHTML = '';
     box.classList.add('hidden');
     box.classList.remove('wide');
@@ -359,8 +361,16 @@ function openPreview(f) {
   $('pv-mask').onclick = clear;
 }
 
+/**
+ * 预览渲染令牌：快速切换预览对象时，先发出的旧响应不能盖住新的内容。
+ * 每次进入渲染就自增一次；响应回来时令牌已被推过，说明用户已经切走/关掉，直接丢弃。
+ */
+let pvSeq = 0;
+
 /** 文本 / markdown：拉取后以 textContent 注入，杜绝文件内容转 HTML */
 function renderTextPreview(body, name, url, size) {
+  // 必须在任何 await 之前取号：取号晚于 await 就等于没取
+  const seq = ++pvSeq;
   body.innerHTML = `<div class="pv-err">加载中…</div>`;
   fetch(url)
     .then((r) => {
@@ -368,6 +378,8 @@ function renderTextPreview(body, name, url, size) {
       return r.text();
     })
     .then((text) => {
+      // 等待期间已经打开别的文件（或关闭了弹层）→ 丢弃本次结果
+      if (seq !== pvSeq) return;
       // 截断保护：超大文本只渲染前一段，尾部标注真实大小
       if (text.length > TEXT_RENDER_LIMIT) {
         text =
@@ -387,6 +399,8 @@ function renderTextPreview(body, name, url, size) {
       }
     })
     .catch((err) => {
+      // 失败的若是已被切走的那个请求，提示同样不该盖到新内容上
+      if (seq !== pvSeq) return;
       body.innerHTML = `<div class="pv-err">加载失败：${esc(err.message || '网络错误')}</div>`;
     });
 }
@@ -622,14 +636,22 @@ function bindRowEvents() {
   });
 }
 
-/** 删除请求（单个文件/目录/批量共用）：返回 { res, data } */
+/**
+ * 删除请求（单个文件/目录共用）：返回 { res, data }。
+ * 网络异常（断网、请求被中断）时返回 res: null 而不抛出 —— 两个调用处都在 await 之后
+ * 直接读 res.ok，异常冒出去就成了没有任何提示的 unhandled rejection。
+ */
 async function apiDel(path, isDir) {
-  const res = await fetch(isDir ? '/api/dir' : '/api/file', {
-    method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ path }),
-  });
-  return { res, data: await res.json().catch(() => ({})) };
+  try {
+    const res = await fetch(isDir ? '/api/dir' : '/api/file', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    return { res, data: await res.json().catch(() => ({})) };
+  } catch {
+    return { res: null, data: {} };
+  }
 }
 
 /** 删除单个文件 */
@@ -642,6 +664,7 @@ async function deleteOne(path) {
   });
   if (!sure) return;
   const { res, data } = await apiDel(path);
+  if (!res) return toast('网络错误，删除未完成', 'err');
   if (res.ok) {
     state.sel.delete(path);
     updateBatch();
@@ -662,6 +685,7 @@ async function deleteDir(path) {
   });
   if (!sure) return;
   const { res, data } = await apiDel(path, true);
+  if (!res) return toast('网络错误，删除未完成', 'err');
   if (res.ok) {
     // 移出可能被选中的该目录下所有文件
     for (const p of state.sel) if (p === path || p.startsWith(path + '/')) state.sel.delete(p);
@@ -699,10 +723,16 @@ function selectAllToggle() {
 }
 
 async function batchCopy() {
-  const urls = [...state.sel].map((p) => dlUrl(p)).join('\n');
+  // 与 batchDownload 同口径：未配置下载域时 dlUrl 会回退成 '#'，直接剔掉 ——
+  // 否则会往剪贴板塞一堆 '#'，还提示「已复制 N 个链接」。
+  const urls = [...state.sel].map((p) => dlUrl(p)).filter((u) => !!u && u !== '#');
+  if (!urls.length) {
+    toast('没有可复制的链接（未配置下载域名）', 'err');
+    return;
+  }
   try {
-    await navigator.clipboard.writeText(urls);
-    toast(`已复制 ${state.sel.size} 个链接`);
+    await navigator.clipboard.writeText(urls.join('\n'));
+    toast(`已复制 ${urls.length} 个链接`);
   } catch {
     toast('复制失败，请检查浏览器权限', 'err');
   }
@@ -867,12 +897,15 @@ let readmeSeq = 0;
 async function renderReadme(items) {
   const box = $('readme');
   if (!box) return;
+  // 令牌必须在「本次进入」时就推进：切到**没有** README 的目录同样要作废在途的旧请求。
+  // 原实现把自增放在下面的 return 之后，于是「无 README 分支」既不推进令牌、也不清空
+  // 在途结果 —— 上一个目录的 README 会被渲染进当前目录，与下方 seq 校验的语义正好相反。
+  const seq = ++readmeSeq;
   const hit = items.files.find((f) => /^readme\.md$/i.test(f.name));
   if (!hit) {
     box.classList.add('hidden');
     return;
   }
-  const seq = ++readmeSeq;
   try {
     const res = await fetch(dlUrl(hit.p));
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1530,11 +1563,17 @@ function bindEvents() {
         placeholder: '请输入管理口令',
       });
       if (!password) return;
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
+      let res;
+      try {
+        res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+      } catch {
+        toast('网络错误，登录请求未送达', 'err');
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) location.reload();
       else toast(data.error || '登录失败', 'err');
@@ -1544,7 +1583,13 @@ function bindEvents() {
   const btnLogout = $('btn-logout');
   if (btnLogout) {
     btnLogout.onclick = async () => {
-      await fetch('/api/logout', { method: 'POST' });
+      try {
+        await fetch('/api/logout', { method: 'POST' });
+      } catch {
+        // 请求没送达时刷新没有意义（cookie 还在），直接提示
+        toast('网络错误，退出登录未完成', 'err');
+        return;
+      }
       location.reload();
     };
   }
@@ -1601,11 +1646,17 @@ function bindEvents() {
         return;
       }
       const path = state.cur ? state.cur + '/' + dir : dir;
-      const res = await fetch('/api/mkdir', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path }),
-      });
+      let res;
+      try {
+        res = await fetch('/api/mkdir', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ path }),
+        });
+      } catch {
+        toast('网络错误，目录未创建', 'err');
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast('目录已创建');

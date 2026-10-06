@@ -109,11 +109,12 @@ console.log('\n\x1b[1m生成部署配置\x1b[0m');
 const workerDomain = requireHost('Worker 站点入口域', 'WORKER_DOMAIN');
 const dlHost = requireHost('R2 下载直链域', 'DL_DOMAIN');
 
-// 选填项：带默认值，非法则回退并告警
+// 选填项：留空即取默认桶名；但**填错不回退** ——
+// 静默回退会把文件写进另一个桶，而且 bucket_name 与 BUCKET_NAME 会一起被改成同一个默认值，
+// 于是 check-deploy 的「两处桶名一致」检查依然通过，属最难排查的一类失误。填错就停下让人改。
 let bucketName = get('BUCKET_NAME') || 'r2share';
 if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucketName)) {
-  warn(`BUCKET_NAME「${bucketName}」不符合 R2 命名规则（3–63 位小写字母/数字/连字符），已回退为 r2share`);
-  bucketName = 'r2share';
+  err(`BUCKET_NAME「${bucketName}」不符合 R2 命名规则（3–63 位小写字母/数字/连字符）`);
 }
 
 let siteName = get('SITE_NAME') || '我的仓库';

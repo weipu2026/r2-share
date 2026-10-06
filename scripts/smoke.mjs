@@ -1,10 +1,45 @@
 /**
  * 本地冒烟测试：验证登录、路径校验、上传、索引、批量接口、下载、删除全流程
- * 用法：node scripts/smoke.mjs [base_url]
+ * 用法：node scripts/smoke.mjs [base_url] [--allow-remote]
  */
 
-const BASE = process.argv[2] || 'http://127.0.0.1:8787';
-const PASSWORD = process.env.TEST_PASSWORD || 'dev123456';
+import { readFileSync } from 'node:fs';
+
+const ARGS = process.argv.slice(2);
+const ALLOW_REMOTE = ARGS.includes('--allow-remote');
+const BASE = ARGS.find((a) => !a.startsWith('--')) || 'http://127.0.0.1:8787';
+
+/**
+ * host 守卫：本脚本会调用 /api/refresh **全量重写索引**、并真的删除文件，
+ * 因此默认只允许指向本机实例。误把生产 URL 传进来会直接改坏线上数据。
+ */
+if (!/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(BASE) && !ALLOW_REMOTE) {
+  console.error(
+    `\n拒绝执行：${BASE} 不是本机地址。\n` +
+      '  本脚本会重建索引并删除文件，只应指向本地 wrangler dev 实例。\n' +
+      '  确实要指向远程实例时，显式加 --allow-remote，并确认那是可以随便改的测试实例。\n'
+  );
+  process.exit(1);
+}
+
+/**
+ * 口令解析顺序：环境变量 → .dev.vars → dev123456。
+ * gen-config 是从 .dev.vars 取口令生成配置的；smoke 若不读同一个来源，直接跑
+ * `npm run smoke` 会拿着与站点不同的口令，首个断言即 401、后续全线崩。
+ */
+function resolvePassword() {
+  if (process.env.TEST_PASSWORD) return process.env.TEST_PASSWORD;
+  try {
+    const dev = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8');
+    const m = dev.match(/^ADMIN_PASSWORD\s*=\s*(.+)$/m);
+    if (m) return m[1].trim().replace(/^['"]|['"]$/g, '');
+  } catch {
+    /* 没有 .dev.vars 就用默认口令（对已部署实例可用 TEST_PASSWORD 覆盖） */
+  }
+  return 'dev123456';
+}
+
+const PASSWORD = resolvePassword();
 
 let cookie = '';
 let pass = 0;
@@ -60,6 +95,42 @@ async function upload(path, content, type) {
   return { ok: true };
 }
 
+/** 测试写入的 4 个文件（路径 / 内容 / MIME），与批量路径一起构成本脚本的清理范围 */
+const FILES = [
+  ['_smoke/你好.txt', 'hello world', 'text/plain'],
+  ['_smoke/说明.md', '# 标题\n\n这是 **粗体** 和 `代码`。\n\n- 项目一\n- 项目二\n', 'text/markdown'],
+  ['_smoke/data.json', JSON.stringify({ a: 1, b: [1, 2, 3] }), 'application/json'],
+  ['_smoke/文档.pdf', '%PDF-1.4 fake pdf content', 'application/pdf'],
+];
+
+/** 批量上传链路用到的 3 个路径 */
+const BATCH_PATHS = ['_smoke/b1.txt', '_smoke/b2.txt', '_smoke/b3.txt'];
+
+/** 本脚本会在桶里创建的**全部** key，供清理使用 */
+const SMOKE_PATHS = [...FILES.map(([p]) => p), ...BATCH_PATHS];
+
+/**
+ * 清理测试残留。幂等：路径不存在时删除接口同样返回 200。
+ * 抽成函数是为了让异常路径也能调用 —— 原先清理写在流程中间，中途抛异常就留下
+ * _smoke/* 残留，污染下一次运行的基线。
+ */
+async function cleanupSmokeFiles() {
+  let allOk = true;
+  for (const p of SMOKE_PATHS) {
+    try {
+      const r = await req('/api/file', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: p }),
+      });
+      if (!r.ok) allOk = false;
+    } catch {
+      allOk = false;
+    }
+  }
+  return allOk;
+}
+
 async function main() {
   console.log(`\n冒烟测试 → ${BASE}\n`);
 
@@ -101,13 +172,8 @@ async function main() {
   ok('子目录下的同名文件不受影响', subIdx.status === 200, `实际 ${subIdx.status}`);
 
   console.log('\n[上传]');
-  // 全部用 _smoke/ 前缀：与演示数据隔离，测完清理，不残留
-  const files = [
-    ['_smoke/你好.txt', 'hello world', 'text/plain'],
-    ['_smoke/说明.md', '# 标题\n\n这是 **粗体** 和 `代码`。\n\n- 项目一\n- 项目二\n', 'text/markdown'],
-    ['_smoke/data.json', JSON.stringify({ a: 1, b: [1, 2, 3] }), 'application/json'],
-    ['_smoke/文档.pdf', '%PDF-1.4 fake pdf content', 'application/pdf'],
-  ];
+  // 全部用 _smoke/ 前缀：与演示数据隔离，测完清理，不残留（定义见文件顶部的 FILES）
+  const files = FILES;
 
   // 先清掉历史运行可能残留的 _smoke 文件，再记录索引基线（兼容已有数据的实例）
   for (const [p] of files) {
@@ -142,7 +208,7 @@ async function main() {
 
   console.log('\n[批量接口]');
   // 批量上传链路：一次签名 → N 次 PUT → 一次提交索引（前端拖入多个文件时的走法）
-  const batchPaths = ['_smoke/b1.txt', '_smoke/b2.txt', '_smoke/b3.txt'];
+  const batchPaths = BATCH_PATHS;
   const signBatch = await json('/api/sign', {
     entries: batchPaths.map((p) => ({ path: p, size: 3, type: 'text/plain' })),
   });
@@ -272,15 +338,7 @@ async function main() {
   ok(`删除后回到测试前 + ${files.length - 1} 条`, idx2.files.length === baseline + files.length - 1);
 
   console.log('\n[清理]');
-  let cleaned = true;
-  for (const [p] of files) {
-    const r = await req('/api/file', {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: p }),
-    });
-    if (!r.ok) cleaned = false;
-  }
+  const cleaned = await cleanupSmokeFiles();
   const idx3 = await (await req('/api/local-index')).json();
   ok('测试文件全部清理', cleaned && idx3.files.length === baseline, `实际 ${idx3.files.length}，基线 ${baseline}`);
 
@@ -288,7 +346,12 @@ async function main() {
   const rf = await json('/api/refresh', {});
   ok('重建返回 200', rf.status === 200, `实际 ${rf.status}`);
   const rb = await rf.json().catch(() => ({}));
-  ok(`重建后索引回到基线 ${baseline}`, rb.ok && rb.files === baseline, `实际 ${rb.files}`);
+  // 不拿「索引长度 == 基线」当判据：桶与索引本就不同步时（正是 refresh 的适用场景）
+  // 重算出来的条数本来就不等于旧索引长度，那是一条与功能无关的假红。
+  // 真正要确认的是：它确实重算了，且刚清理掉的测试文件没有被「重算回来」。
+  ok('重建回传了重算后的文件数', rb.ok === true && Number.isFinite(rb.files), `实际 ${JSON.stringify(rb)}`);
+  const idx4 = await (await req('/api/local-index')).json();
+  ok('重建后索引里仍无测试文件', !files.some(([p]) => idx4.files.some((f) => f.p === p)));
   // 未登录应被拒
   const saved = cookie;
   cookie = '';
@@ -322,11 +385,17 @@ async function main() {
   const stillOk = await json('/api/login', { password: PASSWORD });
   ok('限流不牵连其他 IP（本机仍可登录）', stillOk.status === 200, `实际 ${stillOk.status}`);
 
-  console.log(`\n结果：${pass} 通过，${fail} 失败\n`);
-  process.exit(fail > 0 ? 1 : 0);
 }
 
-main().catch((e) => {
-  console.error('测试异常：', e);
-  process.exit(1);
-});
+// 收尾统一放在 finally：异常路径同样要清理残留，并把「结果」与退出码一起给出
+main()
+  .catch((e) => {
+    console.error('测试异常：', e);
+    fail++;
+  })
+  .finally(async () => {
+    // 正常路径里已清过一次，这里是幂等空转；异常路径靠它兜底
+    await cleanupSmokeFiles().catch(() => {});
+    console.log(`\n结果：${pass} 通过，${fail} 失败\n`);
+    process.exit(fail > 0 ? 1 : 0);
+  });

@@ -84,11 +84,11 @@ export async function presignPut(
   // key 要逐段编码，但保留 / 作为分隔符
   const canonicalUri = `/${bucket}/${key.split('/').map(uriEncode).join('/')}`;
 
-  // SigV4 规范：头值折叠空白（连续空格→1 个）、首尾 trim、小写
-  const canonicalType = contentType
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  // SigV4 规范：头值只做「折叠连续空白 + 首尾 trim」。
+  // ⚠️ 不要顺手 toLowerCase：AWS SigV4 只要求**头名**小写，头值是签名内容的一部分。
+  // 擅自小写会让「按真实 Content-Type 签名」的调用方（第三方客户端、大小写混写的 MIME，
+  // 如 "Text/Plain; Charset=UTF-8"）与 R2 端重算的 canonical request 不一致 → 403。
+  const canonicalType = contentType.replace(/\s+/g, ' ').trim();
 
   const params: Record<string, string> = {
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',

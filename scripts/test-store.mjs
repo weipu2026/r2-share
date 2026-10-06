@@ -371,7 +371,16 @@ group('源码契约：索引写入口径（防回归）');
   );
   // 批上限拆成两个常量：sign 不碰 R2（1000），commit 每条一次 head（400）
   eq('sign 与 commit 用各自的批上限常量', idxSrc.includes('MAX_SIGN_BATCH'), true);
-  eq('MAX_COMMIT_BATCH 留了子请求余量（400）', idxSrc.includes('const MAX_COMMIT_BATCH = 400;'), true);
+  // 真正的不变量是「N 条 head + 索引读 + 索引写 ≤ 1000 子请求」，由 test-frontend.mjs 交叉校验。
+  // 这里只断言常量确实留了余量，不再钉死 400 —— 钉死具体数字会在调整批次大小时报出与
+  // 真实约束无关的假红。
+  const mcbMatch = idxSrc.match(/const MAX_COMMIT_BATCH = (\d+);/);
+  eq('能从 src/index.ts 读到 MAX_COMMIT_BATCH', !!mcbMatch, true);
+  eq(
+    'MAX_COMMIT_BATCH 为「N 条 head + 索引读 + 索引写」留了子请求余量',
+    Number(mcbMatch?.[1]) + 2 <= 1000,
+    true
+  );
   // t 稳定是「空转优化」成立的前提，不能退回 Date.now()
   eq('commit 的 t 取对象真实上传时间', idxSrc.includes('t: obj.uploaded.getTime()'), true);
   eq(

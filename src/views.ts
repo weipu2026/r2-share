@@ -189,7 +189,9 @@ export function renderIndex(opts: RenderOptions): string {
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')};
 </script>
-<script src="/app.js"></script>
+<!-- defer：让浏览器在解析到这一行之前的空闲时间里就开始下载 /app.js，
+     而不是解析到这里才发起请求；app.js 的启动代码本就依赖整份 DOM，执行时机不受影响 -->
+<script src="/app.js" defer></script>
 </body>
 </html>`;
 }

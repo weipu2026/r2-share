@@ -104,8 +104,10 @@ if (/run_worker_first\s*=\s*\[[^\]]*"\//.test(toml)) {
   warn('run_worker_first 未显式包含 "/"：首页会先查静态文件，public/ 一旦出现 index.html 就会绕过 Worker');
 }
 
-// 上传上限与 Workers 请求体上限的关系：顶格设置会让「通过本站校验」的文件被 CF 拦下
-const maxMatch = toml.match(/MAX_UPLOAD\s*=\s*"(\d+)"/);
+// 上传上限与 Workers 请求体上限的关系：顶格设置会让「通过本站校验」的文件被 CF 拦下。
+// 锚定行首（与上面的 bucket_name / BUCKET_NAME / DL_DOMAIN 同口径）：不锚定会读到注释行里
+// 的示例值，把「注释里写的数字」当成实际配置。
+const maxMatch = toml.match(/^MAX_UPLOAD\s*=\s*"(\d+)"/m);
 if (maxMatch) {
   const max = parseInt(maxMatch[1], 10);
   if (max === 0) ok('MAX_UPLOAD = 0（沿用 Workers 请求体上限）');
@@ -193,12 +195,14 @@ if (cors) {
       /<[^>]+>|__[A-Z_]+__|TODO|FIXME/i.test(o)
     );
     if (placeholders.length) {
+      // 命中即代表「gen-config 没跑过、或模板缺 __WORKER_ORIGIN__ 导致它跳过生成」——
+      // 两种情况都是 CORS 确实没配好，走 err() 阻断是对的。
+      // （原提示末尾额外声明了这个检查不阻断，与这里的 err() 自相矛盾，已把那句删掉；
+      //   本注释刻意不复述原句，否则测试里的负向断言会被注释喂成假红。）
       err(
         `${corsPath} 仍有未替换的占位符 origin：${placeholders.join(', ')}\n` +
           '     先运行 `npm run gen-config` 生成 cors.deploy.json（会按 WORKER_DOMAIN 填好 origin），再执行：\n' +
-          '     npx wrangler r2 bucket cors set <BUCKET_NAME> --file cors.deploy.json\n' +
-          '     （GitHub Actions 部署时只有 UPLOAD_VIA_WORKER=0 的直传模式会自动跑这一步，\n' +
-          '      默认的 Worker 代理模式同源上传、用不到 CORS，所以这里不阻断）'
+          '     npx wrangler r2 bucket cors set <BUCKET_NAME> --file cors.deploy.json'
       );
     } else if (origins.length === 0) {
       err('cors.json allowed.origins 为空，浏览器无法上传');

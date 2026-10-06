@@ -68,7 +68,16 @@ jobs:
       # 为什么需要：ADMIN_PASSWORD 只影响 Worker secret，缺了照样能部署成功，
       # 但站点会变成「谁也登录不进去」的静默故障；放这里一次性把必填项暴露清楚，
       # 而不是等用户打开站点才发现。
+      # ⚠️ 值一律经 env 传入，绝不把 ${{ secrets.* }} 直接插进 run: 脚本：
+      # 口令里出现 " 会让脚本引号不配对（部署中止），出现 $(...) 或反引号则会在 runner 上
+      # 执行任意命令 —— 而这个 runner 的 env 里就有 CLOUDFLARE_API_TOKEN。
+      # 下面 Deploy / Sync secrets / Apply CORS 三个 step 用的也是同一写法。
       - name: Validate required config
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          WORKER_DOMAIN: ${{ vars.WORKER_DOMAIN || secrets.WORKER_DOMAIN }}
+          DL_DOMAIN: ${{ vars.DL_DOMAIN || secrets.DL_DOMAIN }}
         run: |
           set -euo pipefail
           miss=0
@@ -80,10 +89,10 @@ jobs:
               echo "  ✓ $1 已配置"
             fi
           }
-          need CLOUDFLARE_API_TOKEN "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-          need ADMIN_PASSWORD      "${{ secrets.ADMIN_PASSWORD }}"
-          need WORKER_DOMAIN       "${{ vars.WORKER_DOMAIN || secrets.WORKER_DOMAIN }}"
-          need DL_DOMAIN           "${{ vars.DL_DOMAIN || secrets.DL_DOMAIN }}"
+          need CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
+          need ADMIN_PASSWORD      "$ADMIN_PASSWORD"
+          need WORKER_DOMAIN       "$WORKER_DOMAIN"
+          need DL_DOMAIN           "$DL_DOMAIN"
           if [ "$miss" != 0 ]; then
             echo
             echo "补齐上面标记的项后重跑：域名等「配置」放 Variables 页，密钥放 Secrets 页。"
@@ -152,10 +161,12 @@ jobs:
             npx wrangler whoami $CFG 2>&1 | tail -15 || true
             exit 1
           }
-          put ADMIN_PASSWORD        "${{ secrets.ADMIN_PASSWORD }}"
-          put SESSION_SECRET        "${{ secrets.SESSION_SECRET }}"
-          put R2_ACCESS_KEY_ID      "${{ secrets.R2_ACCESS_KEY_ID }}"
-          put R2_SECRET_ACCESS_KEY  "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          # 与 Validate 同理：经 env 传入，不直插脚本。
+          # set -u 下必须用 ${VAR:-}，未配置的项定位到空值后由 put() 内部跳过。
+          put ADMIN_PASSWORD        "${ADMIN_PASSWORD:-}"
+          put SESSION_SECRET        "${SESSION_SECRET:-}"
+          put R2_ACCESS_KEY_ID      "${R2_ACCESS_KEY_ID:-}"
+          put R2_SECRET_ACCESS_KEY  "${R2_SECRET_ACCESS_KEY:-}"
           # `${VAR:-}` 双保险：本步骤用了 set -u，若哪天 env 段被改动导致
           # CLOUDFLARE_ACCOUNT_ID 未定义，脚本会以「unbound variable」崩掉，
           # 而不是给出一个能看懂的「未配置，跳过」。
@@ -164,6 +175,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID || secrets.R2_ACCOUNT_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
       # 桶 CORS：**只在 presigned 直传模式**（UPLOAD_VIA_WORKER != "1"）下才需要。
       # 默认模式（"1"）浏览器 PUT 打的是本 Worker 的同源 /api/local-put，不触发跨域预检，

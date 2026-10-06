@@ -16,7 +16,8 @@
     "test-store": "node scripts/test-store.mjs",
     "test-preview": "node scripts/test-preview.mjs",
     "test-frontend": "node scripts/test-frontend.mjs",
-    "test": "node scripts/test-crypto.mjs && node scripts/test-mode.mjs && node scripts/test-store.mjs && node scripts/test-preview.mjs && node scripts/test-frontend.mjs",
+    "test-routes": "node --import ./scripts/_ts-loader-register.mjs scripts/test-routes.mjs",
+    "test": "node scripts/test-crypto.mjs && node scripts/test-mode.mjs && node scripts/test-store.mjs && node scripts/test-preview.mjs && node scripts/test-frontend.mjs && npm run test-routes",
     "push:gh": "bash scripts/push-gh.sh",
     "types": "wrangler types"
   },

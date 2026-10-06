@@ -275,7 +275,16 @@ group('事件委托：网格视图点「删除目录」不能误进该目录');
 
 group('源码契约：关键链路的调用方式');
 const has = (re) => re.test(src);
-const fnBody = (name) => (src.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`)) || [''])[0];
+/**
+ * 取出某个函数的函数体。
+ * 匹配不到就抛错 —— 返回空串会让「不含某字符串」这类**负向断言恒真**（假绿）：
+ * 函数一旦改名、改成箭头函数、或换一种书写风格，断言会静默失效而不是失败。
+ */
+const fnBody = (name) => {
+  const m = src.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`));
+  if (!m) throw new Error(`fnBody：在 app.js 里找不到 function ${name}（相关断言已失效，请同步测试）`);
+  return m[0];
+};
 
 eq('点目录时重置批量选择', has(/state\.cur = dirEl\.dataset\.dir;\s*\r?\n\s*resetSel\(\);/), true);
 eq('面包屑切目录时重置批量选择', has(/state\.cur = a\.dataset\.p;\s*\r?\n\s*resetSel\(\);/), true);
@@ -342,6 +351,95 @@ group('CI：部署前必须跑测试');
   const iTest = wf.indexOf('run: npm test');
   const iDeploy = wf.indexOf('run: npm run deploy');
   eq('测试步骤落在 Deploy 之前（失败即中止，不会部署）', iTest > -1 && iDeploy > -1 && iTest < iDeploy, true);
+
+  // secrets 只能经 env: 传入，绝不能直插 run: 脚本体：
+  // 口令含 " 会让引号不配对（部署中止），含 $(...) / 反引号则在 runner 上执行任意命令，
+  // 而 runner 的 env 里就有 CLOUDFLARE_API_TOKEN。
+  eq(
+    'secrets 不再直插 run: 脚本（need/put 的参数已改为 env 变量）',
+    /(?:need|put)\s+\w+\s+"\$\{\{\s*secrets\./.test(wf),
+    false
+  );
+  eq('Sync secrets 步骤经 env 传入 ADMIN_PASSWORD', /^\s*ADMIN_PASSWORD: \$\{\{ secrets\.ADMIN_PASSWORD \}\}$/m.test(wf), true);
+}
+
+/* ---------------- 本轮修复的行为契约（防回归） ---------------- */
+
+group('README / 预览的请求令牌');
+{
+  const fb = fnBody('renderReadme');
+  const iSeq = fb.indexOf('++readmeSeq');
+  // 参照点用「if (!hit) {」而不是「第一个 return;」——函数开头的 `if (!box) return;`
+  // 也在令牌之前，拿它当参照这条断言永远为真，就失去了判别力。
+  const iHit = fb.indexOf('if (!hit) {');
+  // 令牌若落在「无 README 直接 return」之后，切到没有 README 的目录时令牌不推进，
+  // 上一个目录的 README 就会被渲染进当前目录。
+  eq('README 令牌在「无 README 提前 return」之前推进', iSeq > -1 && iHit > -1 && iSeq < iHit, true);
+  eq('README 响应回来时校验令牌', fb.includes('seq !== readmeSeq'), true);
+}
+{
+  const fb = fnBody('renderTextPreview');
+  eq('文本预览在发起请求前先取号', fb.includes('++pvSeq'), true);
+  eq('文本预览的成功分支校验令牌（过期响应丢弃）', fb.includes('seq !== pvSeq'), true);
+  eq('文本预览的失败分支同样校验令牌（不覆盖新内容）',
+    fb.split('seq !== pvSeq').length - 1 >= 2, true);
+}
+
+group('网络异常不再变成 unhandled rejection');
+{
+  const fb = fnBody('apiDel');
+  eq('apiDel 内部捕获网络异常并返回 res: null', fb.includes('res: null'), true);
+  eq('deleteOne 对网络失败给出提示', fnBody('deleteOne').includes('if (!res) return toast('), true);
+  eq('deleteDir 对网络失败给出提示', fnBody('deleteDir').includes('if (!res) return toast('), true);
+  eq('登录请求包了 try/catch', /try \{\s*\r?\n\s*res = await fetch\('\/api\/login'/.test(src), true);
+  eq('登出请求包了 try/catch', /try \{\s*\r?\n\s*await fetch\('\/api\/logout'/.test(src), true);
+  eq('新建目录请求包了 try/catch', /try \{\s*\r?\n\s*res = await fetch\('\/api\/mkdir'/.test(src), true);
+}
+
+group('批量复制链接');
+{
+  const fb = fnBody('batchCopy');
+  eq("批量复制先剔掉未配置域时的 '#'（与批量下载同口径）", fb.includes("u !== '#'"), true);
+  eq('批量复制按过滤后的条数提示', fb.includes('urls.length'), true);
+}
+
+group('测试工具自身：fnBody 不再静默失效');
+{
+  let threw = false;
+  try { fnBody('thisFunctionNameDoesNotExist'); } catch { threw = true; }
+  eq('fnBody 对不存在的函数抛错（而非返回空串让负向断言恒真）', threw, true);
+}
+
+group('部署脚本与视图');
+{
+  const cd = readFileSync(new URL('./check-deploy.mjs', import.meta.url), 'utf8');
+  eq('MAX_UPLOAD 检查锚定行首（与其它键同口径，不会读到注释行）', /toml\.match\(\/\^MAX_UPLOAD/.test(cd), true);
+  eq('CORS 占位符告警不再自称「不阻断」（文案与 err() 行为一致）', cd.includes('所以这里不阻断'), false);
+
+  const gc = readFileSync(new URL('./gen-config.mjs', import.meta.url), 'utf8');
+  const seg = (gc.match(/let bucketName = [\s\S]*?\n\}/) || [''])[0];
+  eq('桶名非法时不再静默回退（改走 err 中止）', seg.includes('err('), true);
+  eq('桶名非法时不再把 bucketName 覆盖成默认值', /bucketName = 'r2share'/.test(seg), false);
+
+  const sm = readFileSync(new URL('./smoke.mjs', import.meta.url), 'utf8');
+  // ⚠️ 不能写成 sm.includes('--allow-remote')：文件的注释与错误提示里都有这个词，
+  //    守卫被删掉断言照样为真（实测踩到）。必须落在「谁决定 ALLOW_REMOTE」这个赋值上。
+  eq(
+    '冒烟测试有 host 守卫（非本机地址需显式 --allow-remote）',
+    /ALLOW_REMOTE = ARGS\.includes\('--allow-remote'\);/.test(sm),
+    true
+  );
+  eq('冒烟测试优先从 .dev.vars 取口令（与 gen-config 同源）', sm.includes("'../.dev.vars'"), true);
+  eq('冒烟测试的清理抽成函数并在 finally 兜底', sm.includes('cleanupSmokeFiles()') && /\.finally\(/.test(sm), true);
+  eq('冒烟测试不再拿索引长度当重建基线', sm.includes('rb.files === baseline'), false);
+
+  const sig = readFileSync(new URL('../src/sigv4.ts', import.meta.url), 'utf8');
+  const block = (sig.match(/const canonicalType = [\s\S]*?;/) || [''])[0];
+  eq('SigV4 的 canonical Content-Type 不对值做 toLowerCase', block.includes('toLowerCase'), false);
+  eq('SigV4 仍折叠空白并 trim', block.includes("replace(/\\s+/g, ' ')") && block.includes('.trim()'), true);
+
+  const views = readFileSync(new URL('../src/views.ts', import.meta.url), 'utf8');
+  eq('首页脚本标签带 defer', /<script src="\/app\.js" defer><\/script>/.test(views), true);
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);
