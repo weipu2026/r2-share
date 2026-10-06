@@ -68,6 +68,12 @@ function makeEl() {
 /** getElementById 对任意 id 都返回一个元素：render() 会摸到很多节点 */
 function makeDocument() {
   const els = new Map();
+  // 记录 body 上注册的监听器：便于直接驱动 bindRowEvents 做分支判定
+  const listeners = { click: [], change: [] };
+  const body = makeEl();
+  body.addEventListener = (type, fn) => {
+    (listeners[type] || (listeners[type] = [])).push(fn);
+  };
   return {
     getElementById(id) {
       if (!els.has(id)) els.set(id, makeEl());
@@ -78,7 +84,8 @@ function makeDocument() {
     createElement: () => makeEl(),
     addEventListener() {},
     removeEventListener() {},
-    body: makeEl(),
+    body,
+    __listeners: listeners,
   };
 }
 
@@ -88,7 +95,7 @@ function load() {
     'window',
     'document',
     `${body}
-return { state, resetSel, applyIndexEntries, dropIndexPaths, kindOf, updateBatch, chunk, UPLOAD_CHUNK, DELETE_CHUNK };`
+return { state, resetSel, applyIndexEntries, dropIndexPaths, kindOf, updateBatch, chunk, UPLOAD_CHUNK, DELETE_CHUNK, bindRowEvents, __doc: document };`
   );
   return fn(
     { __CFG__: { dlDomain: 'https://dl.example.com', isLogin: true } },
@@ -205,6 +212,65 @@ group('kindOf：走查表后行为不变');
   eq('未收录的扩展名回退为 file', api.kindOf('a.zzz', false), 'file');
 }
 
+/* ---------------- 事件委托：网格视图的删除按钮 ---------------- */
+
+/**
+ * 极简 DOM 节点替身：只实现事件委托用到的 closest / dataset / classList。
+ * 用 parent 串出祖先链，用来复现「data-dir 挂在整个 .cell 上、删除按钮是其后代」
+ * 这一网格视图结构（列表视图里两者是兄弟节点，不会踩到）。
+ */
+function fakeNode({ classes = [], data = {}, parent = null } = {}) {
+  const node = {
+    classes,
+    dataset: { ...data },
+    parent,
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+  };
+  node.closest = (sel) => {
+    let n = node;
+    while (n) {
+      if (matchesSel(n, sel)) return n;
+      n = n.parent;
+    }
+    return null;
+  };
+  return node;
+}
+
+/** 只支持测试里用到的那几种选择器：.cls、[data-x]、.cls[data-x] */
+function matchesSel(node, sel) {
+  const m = sel.match(/^(\.[\w-]+)?(\[data-[\w-]+\])?$/);
+  if (!m || (!m[1] && !m[2])) return false;
+  if (m[1] && !node.classes.includes(m[1].slice(1))) return false;
+  if (m[2]) {
+    const key = m[2].slice(6, -1).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (!(key in node.dataset)) return false;
+  }
+  return true;
+}
+
+group('事件委托：网格视图点「删除目录」不能误进该目录');
+{
+  const api = load();
+  api.state.cur = '';
+  api.state.index = [];
+  api.bindRowEvents();
+  const onClick = api.__doc.__listeners.click[0];
+  eq('click 监听器已注册', typeof onClick, 'function');
+
+  // .cell[data-dir] > .cell-actions > button[data-deldir]
+  const cell = fakeNode({ classes: ['cell'], data: { dir: 'docs' } });
+  const actions = fakeNode({ classes: ['cell-actions'], parent: cell });
+  const btn = fakeNode({ data: { deldir: 'docs' }, parent: actions });
+
+  onClick({ target: btn, preventDefault() {} });
+
+  // 反向：不能把祖先 .cell 的 data-dir 当成「进入目录」
+  eq('点击删除按钮后仍停留在原目录', api.state.cur, '');
+  // 正向：必须真的走到了删除分支（否则「什么都不做」也能让上一行为真）
+  eq('确实弹出了「删除目录」确认框', api.__doc.getElementById('dlg-title').textContent, '删除目录');
+}
+
 /* ---------------- 源码契约（防回归） ---------------- */
 
 group('源码契约：关键链路的调用方式');
@@ -268,6 +334,15 @@ eq(
   true
 );
 eq('wrangler.toml 不再绑定 KV', /\[\[kv_namespaces\]\]/.test(toml), false);
+
+group('CI：部署前必须跑测试');
+{
+  const wf = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+  eq('deploy.yml 里有一条 npm test 步骤', /^\s*run:\s*npm test\s*$/m.test(wf), true);
+  const iTest = wf.indexOf('run: npm test');
+  const iDeploy = wf.indexOf('run: npm run deploy');
+  eq('测试步骤落在 Deploy 之前（失败即中止，不会部署）', iTest > -1 && iDeploy > -1 && iTest < iDeploy, true);
+}
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);
 process.exit(fail ? 1 : 0);

@@ -19,7 +19,7 @@
 #   R2_SECRET_ACCESS_KEY    同上
 #   R2_ACCOUNT_ID           留空 → 复用 CLOUDFLARE_ACCOUNT_ID（S3 端点同值）
 #
-# 流水线顺序：Validate（必填项 fail-fast）→ Deploy → Sync secrets → Apply CORS（仅直传模式）
+# 流水线顺序：Validate（必填项 fail-fast）→ Test（单测门禁）→ Deploy → Sync secrets → Apply CORS（仅直传模式）
 # 三步都在同一个 job 里，gen-config 产出的 wrangler.deploy.toml / cors.deploy.json 会留给后续步骤读。
 #
 # 两类变量都支持：同名配置会优先读 Variables，其次读 Secrets（向后兼容）。
@@ -89,6 +89,13 @@ jobs:
             echo "补齐上面标记的项后重跑：域名等「配置」放 Variables 页，密钥放 Secrets 页。"
             exit 1
           fi
+
+      # 部署前必跑测试。test-frontend.mjs 里那批跨端契约断言（前端 UPLOAD_CHUNK /
+      # DELETE_CHUNK 不得超过服务端 MAX_COMMIT_BATCH / MAX_DELETE_BATCH、首页必须走 Worker、
+      # CAS 语义…）只有在 CI 里真的执行才有意义 —— 否则改坏前后端任一侧都能直接上线。
+      # 本 step 失败会中止整个 job，后面的 Deploy 不会执行。
+      - name: Run tests
+        run: npm test
 
       # npm run deploy 内部 = gen-config（注入域名，缺则失败）→ npm run check → wrangler deploy
       # WORKER_DOMAIN / DL_DOMAIN 是硬性必填：缺失/非法时 gen-config 退出码 1，部署中止。

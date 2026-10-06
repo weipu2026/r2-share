@@ -545,20 +545,14 @@ function resetSel() {
 function bindRowEvents() {
   const root = document.body;
 
-  /* ---- 点击操作（目录进入 / 复制 / 预览 / 删除） ---- */
+  /* ---- 点击操作（复制 / 预览 / 删除 → 目录进入 → 单元格） ---- */
   root.addEventListener('click', (e) => {
     // 复选框交给 change 事件，不触发单元格操作
     if (e.target.closest('.sel')) return;
-
-    const dirEl = e.target.closest('[data-dir]');
-    if (dirEl) {
-      e.preventDefault();
-      state.cur = dirEl.dataset.dir;
-      resetSel();
-      render();
-      return;
-    }
-
+    // ⚠️ 判断顺序有讲究：操作类分支必须排在 [data-dir] 之前。
+    // 网格视图里 [data-dir] 挂在整个 .cell 上，删除按钮是它的后代；
+    // 若先判 [data-dir]，点删除会命中祖先 .cell，被当成「进入目录」而直接 return，
+    // 下面的 [data-deldir] 分支就永远不可达 —— 网格视图下将无法删除任何目录。
     const copyEl = e.target.closest('[data-copy]');
     if (copyEl) {
       navigator.clipboard
@@ -585,6 +579,16 @@ function bindRowEvents() {
     const delDirEl = e.target.closest('[data-deldir]');
     if (delDirEl) {
       deleteDir(delDirEl.dataset.deldir);
+      return;
+    }
+
+    // 目录进入：必须是操作类分支之后的兜底判断（顺序说明见本监听器开头）
+    const dirEl = e.target.closest('[data-dir]');
+    if (dirEl) {
+      e.preventDefault();
+      state.cur = dirEl.dataset.dir;
+      resetSel();
+      render();
       return;
     }
 
